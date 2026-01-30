@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once 'include/dbo.php';
 
+// File Name : dc-item-searched-list-ajax.php 
+
 header('Content-Type: application/json; charset=utf-8');
 
 try {
@@ -28,13 +30,10 @@ try {
 			pi.item_disp_name,
 			pi.item_desc,
 			pi.item_uom,
+			pi.item_sale_price,			
 			pi.item_pur_price,
 			pi.avail_qty,
 			pi.item_grp_id,
-
-			COALESCE(pi.tracking_mode, 'NONE') AS tracking_mode,
-			COALESCE(pi.expiry_required, 'N')  AS expiry_required,
-
 			pg.grp_name,
 			pg.hsn_code,
 			pg.gst
@@ -55,6 +54,12 @@ try {
 		LIMIT 100
 	";
 
+/*
+ Was part of above sql -- These fields are still not on production yet -
+			COALESCE(pi.tracking_mode, 'NONE') AS tracking_mode,
+			COALESCE(pi.expiry_required, 'N')  AS expiry_required,
+*/
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$biz_id, $q, $like, $like, $like, $like]);
 
@@ -62,6 +67,6 @@ try {
     echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
 
 } catch (Throwable $e) {
-    error_log("purchase-get-item-data-ajax(PDO): " . $e->getMessage());
+    error_log("dc-item-searched-list-ajax(PDO): " . $e->getMessage());
     echo json_encode(['ok' => false, 'msg' => 'Server error']);
 }
