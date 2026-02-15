@@ -5,6 +5,8 @@ session_start();
 include 'include/session.php';
 include 'include/param.php';  //Check Usage ??
 include 'include/dbo.php';
+//include 'include/item.php';
+
 
 /*
 File Name : quote-update.php
@@ -33,7 +35,7 @@ include 'company-info.php'; // expects $comp_state (like DC)
 $dbh = new dbo();
 $dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-$item_obj = new Item();
+//$item_obj = new Item();
 
 $doc_type = 'QUOTE';
 include 'config-doc-entry-info.php'; // outputs: $allow_remark_txn ; $allow_remark_item
@@ -672,7 +674,7 @@ $val = function($k, $default='') use ($quote_hdr) {
         <div class="form-group row">
           <label class="control-label col-md-2" for="BillTo"><b>Party Details:</b></label>
           <div class="col-md-2">
-            <button type="button" class="btn bill_btn btn-info" data-toggle="modal" data-target="#PartyModal">Select Party</button>
+            <button type="button" class="btn bill_btn btn-info" data-toggle="modal" data-target="#PartyModal" style="padding:2px 12px;">Select Party</button>
           </div>
           <label class="control-label col-md-2" for="name">Party ID/Name</label>
           <div class="col-md-1">
@@ -731,8 +733,8 @@ $val = function($k, $default='') use ($quote_hdr) {
             </div>
           </div>
         </div>
-
-        <div class="row" style="margin-top:10px;">
+<!-- Status is hidden for as of now -->
+        <div class="row" style="margin-top:10px; display:none;">
          
         <label class="control-label col-md-2">Status</label>
 		<div class="col-md-3">	

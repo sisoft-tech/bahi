@@ -193,14 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
 
     $sqlInsertDetail = "
         INSERT INTO table_dc_details (
-            parent_dc_id, ref_order_details_id, item_srl_no,
+            biz_id, parent_dc_id, ref_order_details_id, item_srl_no,
             item_id, item_name, item_note, uom, qty, price,
             discount_mode, discount_amt, discount_pct,
             hsn_code, gst_pct,
             taxable_amt, cgst_amt, sgst_amt, igst_amt, gst_amt, line_total
         )
         VALUES (
-            :parent_dc_id, :ref_order_details_id, :item_srl_no,
+            :biz_id, :parent_dc_id, :ref_order_details_id, :item_srl_no,
             :item_id, :item_name, :item_note, :uom, :qty, :price,
             :discount_mode, :discount_amt, :discount_pct,
             :hsn_code, :gst_pct,
@@ -330,9 +330,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
 
             // Optional fields (not in UI currently but supported by schema)
             $item_note       = trim((string)($_POST['item_note'][$i] ?? ''));
-            $discount_mode   = strtoupper(trim((string)($_POST['discount_mode'][$i] ?? '')));
+            $discount_mode   = strtoupper(trim((string)($_POST['discount_mode'][$i] ?? 'NONE')));
             $discount_amt    = (float)($_POST['discount_amt'][$i] ?? 0);
-            $discount_pct    = ($_POST['discount_pct'][$i] ?? '') !== '' ? (float)$_POST['discount_pct'][$i] : null;
+            $discount_pct    = ($_POST['discount_pct'][$i] ?? '') !== '' ? (float)$_POST['discount_pct'][$i] : 0;
             $ref_order_detid = ($_POST['ref_order_details_id'][$i] ?? '') !== '' ? (int)$_POST['ref_order_details_id'][$i] : null;
 
             $base = $qty * $price;
@@ -382,6 +382,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
             $total_net     += $line_total;
 
             $stmtDetail->execute([
+				':biz_id'        => $biz_id,
                 ':parent_dc_id'        => $dc_id,
                 ':ref_order_details_id'=> $ref_order_detid,
                 ':item_srl_no'         => ($i + 1),
@@ -1506,7 +1507,7 @@ function addItemLineRow(it) {
 </script>
 
 <script>
-function togglePIQuoteFields() {
+function toggleDocReferenceFields() {
   var num = $.trim($('#sup_doc_num').val() || '');
   var $date = $('#sup_doc_date');
 
@@ -1524,8 +1525,8 @@ function togglePIQuoteFields() {
 }
 
 $(function () {
-  togglePIQuoteFields();
-  $('#sup_doc_num').on('input', togglePIQuoteFields);
+  toggleDocReferenceFields();
+  $('#sup_doc_num').on('input', toggleDocReferenceFields);
 });
 </script>
 

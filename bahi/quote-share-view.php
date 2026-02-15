@@ -3,7 +3,6 @@ ob_start();
 session_start();
 
 include 'include/dbo.php';
-include 'include/param.php';
 include 'include/amount-in-words.php';
 include 'include/share_token.php';
 
@@ -25,13 +24,13 @@ try {
 
   // Details
   $d = $dbh->prepare("SELECT * FROM quote_details 
-  WHERE biz_id=? AND parent_quote_id=? 
-    ORDER BY
-  CASE
-    WHEN item_type = 'CHARGE'    THEN 2
-    WHEN item_type = 'ROUND_OFF' THEN 3
-    ELSE 1
-  END, quote_detail_id" ) ;
+	  WHERE biz_id=? AND parent_quote_id=? 
+		ORDER BY
+	  CASE
+		WHEN item_type = 'CHARGE'    THEN 2
+		WHEN item_type = 'ROUND_OFF' THEN 3
+		ELSE 1
+	  END, quote_detail_id") ;
   $d->execute([$biz_id, $quote_id]);
   $details = $d->fetchAll(PDO::FETCH_ASSOC);
 
@@ -63,7 +62,6 @@ $quote_discount_count = (int)$disc_stmt->fetchColumn();
 // Totals computed from details (to avoid relying on header totals that do not exist)
 $tot_stmt = $dbh->prepare("
   SELECT 
-    item_type, 
     COALESCE(SUM(qty * price), 0)                           AS gross_amt,
     COALESCE(SUM(CASE 
       WHEN discount_mode='AMT' THEN (qty * discount_amt)

@@ -13,8 +13,14 @@ session_start();
 
 require 'include/dbo.php';
 require 'include/session.php';
+include 'include/param-pos.php';
 
 checksession();
+/** Check this : 3012-2025 */
+if (empty($availableProducts) || !is_array($availableProducts)) {
+    throw new RuntimeException('Product configuration missing. Please contact admin.');
+}
+
 
 $dbh = new dbo();
 $username_head = $_SESSION['login'] ?? '';
@@ -662,10 +668,9 @@ if (!$errors && $admin_id !== null) {
             <label for="newProdItem">Product</label>
             <select name="prod_item_name" id="newProdItem" class="form-control">
               <option value="">-- Select Product --</option>
-              <option value="Bahi">Bahi Desktop</option>
-              <option value="ecom">e-Commerce</option>
-              <option value="godam">Godam</option>
-            </select>
+			  <?php foreach (($availableProducts ?? []) as $key => $meta): ?>
+					<option value="<?= e($key) ?>"><?= e($meta['label'] ?? $key) ?></option>
+			  <?php endforeach; ?>            </select>
           </div>
 
           <div class="form-group">

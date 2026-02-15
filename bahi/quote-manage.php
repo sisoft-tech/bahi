@@ -10,8 +10,9 @@ include 'include/share_token.php';
 
 $debug = 0;
 checksession();
-$dbh    = new dbo();
 $biz_id = $_SESSION['biz_id'] ?? 0;
+
+$dbh    = new dbo();
 
 include 'company-info.php';
 

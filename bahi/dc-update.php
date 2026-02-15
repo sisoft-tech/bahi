@@ -51,6 +51,11 @@ include 'config-doc-entry-info.php'; // outputs: $allow_remark_txn ; $allow_rema
 
 	$err_msg = '';
 	$ok_msg  = '';
+	$dc_hdr = null;
+	$dc_det = [];
+	$dispatch_mode_init = 'NONE';
+	$ewb_valid_upto_disp = '';
+
 
 	if ($dc_id <= 0) {
 		$err_msg = 'Missing DC id (dc_id).';
@@ -102,6 +107,50 @@ if (isset($_POST['dc_update'])){              // From dc-manage
 	}
 
 }
+
+
+// ---------------------------
+// 2) DELETE action
+// ---------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_dc']))  {
+  try {
+    if (!$dbh->inTransaction()) $dbh->beginTransaction();
+
+    // a) Delete details
+    $dbh->prepare("DELETE FROM table_dc_details WHERE parent_dc_id=?")->execute([$dc_id]);
+
+	// clear header ewb link first (safe even if no FK)
+	$dbh->prepare("UPDATE table_dc_header SET ewb_id=NULL, ewb_num=NULL, ewb_dt=NULL WHERE biz_id=? AND dc_id=?")
+		->execute([$biz_id, $dc_id]);
+
+
+    // b) Delete EWB (and any link from header)
+    $dbh->prepare("DELETE FROM table_ewb WHERE biz_id=? AND txn_type='DC' AND txn_id=?")->execute([$biz_id, $dc_id]);
+
+    // c) Delete header
+    $dbh->prepare("DELETE FROM table_dc_header WHERE biz_id=? AND dc_id=?")->execute([$biz_id, $dc_id]);
+
+    // d) OPTIONAL: delete stock journal / other derived tables
+    // Example (ONLY if you actually store DC entries there):
+    // $dbh->prepare("DELETE FROM table_stock_journal WHERE biz_id=? AND doc_type='DC' AND doc_id=?")->execute([$biz_id, $dc_id]);
+
+    $dbh->commit();
+
+    echo "<script>
+      alert(" . json_encode("Delivery Challan deleted.") . ");
+      window.location.href = 'dc-manage.php';
+    </script>";
+    exit;
+
+  } catch (Throwable $e) {
+    if ($dbh->inTransaction()) $dbh->rollBack();
+    http_response_code(500);
+    die("Delete failed: " . $e->getMessage());
+  }
+}
+
+
+
 
 // -----------------------------------------------------------------------------
 // Update handler
@@ -263,10 +312,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
                 igst_amt = :igst_amt,
                 gst_amt = :gst_amt,
                 line_total = :line_total
-            WHERE parent_dc_id = :parent_dc_id AND item_srl_no = :item_srl_no
-        ";
+            WHERE dc_details_id = :dc_details_id   ";
+			
 
-        $sqlDeleteDetail = 'DELETE FROM table_dc_details WHERE parent_dc_id = :parent_dc_id AND item_srl_no = :item_srl_no';
+        $sqlDeleteDetail = 'DELETE FROM table_dc_details  WHERE dc_details_id = :dc_details_id ';
 
         $sqlInsertDetail = "
             INSERT INTO table_dc_details (
@@ -423,27 +472,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
         $total_net     = 0.00;
 
         $item_srl_arr = $_POST['item_srl_no'] ?? [];
+		$dc_details_id_arr = $_POST['dc_details_id'] ?? [];
         $ref_od_arr   = $_POST['ref_order_details_id'] ?? [];
         $disc_mode_arr= $_POST['discount_mode'] ?? [];
         $disc_amt_arr = $_POST['discount_amt'] ?? [];
         $disc_pct_arr = $_POST['discount_pct'] ?? [];
         $item_note_arr= $_POST['item_note'] ?? [];
 
-        for ($i = 0; $i < $n; $i++) {                 // For each item record based on $rec_status - upd, del, new
-            $rs = strtoupper(trim((string)($rec_status_arr[$i] ?? '')));
-            if ($rs === '') $rs = 'upd';
+        for ($i = 0; $i < count($_POST['item_id']); $i++) {                 // For each item record based on $rec_status - upd, del, new
 
-            $orig_srl = (int)($item_srl_arr[$i] ?? 0);
+            $rs = strtolower(trim((string)($rec_status_arr[$i] ?? '')));
+
+			$dc_details_id = (int) ($dc_details_id_arr[$i] ?? 0) ;
 
             // Delete
             if ($rs === 'del') {
-                if ($orig_srl > 0) {
-                    $stmtDelD->execute([':parent_dc_id'=>$dc_id, ':item_srl_no'=>$orig_srl]);
+                if ($dc_details_id > 0) {
+                    $stmtDelD->execute([':dc_details_id'=>$dc_details_id]);
                 }
                 continue;
             }
 			
             // Read values
+            $orig_srl = (int)($item_srl_arr[$i] ?? 0);
             $item_id    = ($_POST['item_id'][$i] ?? '') !== '' ? (int)$_POST['item_id'][$i] : null;
             $item_name  = trim((string)($_POST['item_name'][$i] ?? ''));
             $uom        = trim((string)($_POST['uom'][$i] ?? ''));
@@ -453,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
             $gst_pct    = (float)($_POST['itemGST'][$i] ?? 0);
 
             $item_note  = trim((string)($item_note_arr[$i] ?? ''));
-            $discount_mode = strtoupper(trim((string)($disc_mode_arr[$i] ?? '')));
+            $discount_mode = strtoupper(trim((string)($disc_mode_arr[$i] ?? 'NONE')));
             $discount_amt  = (float)($disc_amt_arr[$i] ?? 0);
             $discount_pct  = ($disc_pct_arr[$i] ?? '') !== '' ? (float)$disc_pct_arr[$i] : null;
             $ref_order_detid = ($ref_od_arr[$i] ?? '') !== '' ? (int)$ref_od_arr[$i] : null;
@@ -503,8 +554,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
             $total_net     += $line_total;
 
             $payload = [
-                ':parent_dc_id' => $dc_id,
-                ':item_srl_no' => $cur_srl,
                 ':ref_order_details_id' => $ref_order_detid,
                 ':item_id' => $item_id,
                 ':item_name' => ($item_name !== '' ? $item_name : null),
@@ -512,7 +561,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
                 ':uom' => ($uom !== '' ? $uom : null),
                 ':qty' => $qty,
                 ':price' => $price,
-                ':discount_mode' => ($discount_mode !== '' ? $discount_mode : null),
+                ':discount_mode' => ($discount_mode !== '' ? $discount_mode : 'NONE'),
                 ':discount_amt' => $discount_amt,
                 ':discount_pct' => $discount_pct,
                 ':hsn_code' => ($hsn !== '' ? $hsn : null),
@@ -525,17 +574,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit']) && $dc_id >
                 ':line_total' => $line_total,
             ];
 
-            if ($rs === 'upd' && $orig_srl > 0) {
-                // If srl changed (shouldn't), keep where using orig_srl.
+            if ($rs === 'upd') {
                 $payloadUpd = $payload;
-                unset($payloadUpd[':item_srl_no']);
-                $payloadUpd[':parent_dc_id'] = $dc_id;
-                $payloadUpd[':item_srl_no'] = $orig_srl;
+                $payloadUpd[':dc_details_id'] = $dc_details_id;
                 $stmtUpdD->execute($payloadUpd);
-
                 // If a new row got assigned new srl but had orig_srl, we don't support re-numbering.
-            } else {
+            } 
+			else {
                 // Insert with assigned srl
+                $payload[':parent_dc_id'] = $dc_id;
+                $payload[':item_srl_no'] = $cur_srl;
                 $stmtInsD->execute($payload);
             }
         }
@@ -670,6 +718,16 @@ $diff_ship_checked = ($val('diff_shp_add','N') === 'Y');
     .row-del input, .row-del textarea, .row-del select { pointer-events:none; }
   </style>
 
+  <script>
+    function confirmDeleteDC(){
+      var dc = <?php echo json_encode($dc_hdr['dc_num'] ?? ''); ?>;
+      var ok = window.confirm("Delete Delivery Challan " + dc + "?\nThis will remove Header, Items and E-Way Bill entries.\n\nProceed?");
+      if (!ok) return false;
+      document.getElementById('dc_delete_form').submit();
+      return false;
+    }
+   </script>	
+  
   <script type="text/javascript">
     function searchName(){
       var biz_id = $('#biz_id').val();
@@ -758,7 +816,21 @@ $diff_ship_checked = ($val('diff_shp_add','N') === 'Y');
 
   <main>
     <div class="container container-md mt-10 p-4">
-      <center><h3 class="text-primary" style="margin-top:50px;">Delivery Challan Update</h3></center>
+		<div class="row" style="margin-top:50px;">
+		  <div class="col-md-8">
+			<h3 class="text-primary">Delivery Challan Update</h3>
+		  </div>
+		  <div class="col-md-4 text-right">
+			<!-- DELETE button top-right -->
+			<form method="POST" id="dc_delete_form">
+				<button type="button" class="btn btn-danger" onclick="confirmDeleteDC()">DELETE DC</button>
+				<input type="hidden" name="delete_dc" value="1">
+				<input hidden id="biz_id" name="biz_id" value="<?php echo htmlspecialchars((string)$biz_id); ?>" type="text">
+				<input type="hidden" name="update_id" value="<?php echo htmlspecialchars((string)$dc_id); ?>">
+				<input type="hidden" name="src_loc" value="<?php echo htmlspecialchars((string)$src_loc); ?>">
+			</form>
+		  </div>
+	  </div>
 
       <?php if ($err_msg !== ''): ?>
         <div class="alert alert-danger" style="margin-top:15px;"><?php echo htmlspecialchars($err_msg); ?></div>
@@ -950,9 +1022,9 @@ $diff_ship_checked = ($val('diff_shp_add','N') === 'Y');
                         $price = isset($r['price']) ? (float)$r['price'] : 0.0;
                         $gst = isset($r['gst_pct']) ? (float)$r['gst_pct'] : 0.0;
 
-                        $disc_mode = $r['discount_mode'] ?? '';
+                        $disc_mode = $r['discount_mode'] ?? 'NONE';
                         $disc_amt  = isset($r['discount_amt']) ? (float)$r['discount_amt'] : 0.0;
-                        $disc_pct  = $r['discount_pct'] ?? '';
+                        $disc_pct  = $r['discount_pct'] ?? '0.00';
                         $ref_odid  = $r['ref_order_details_id'] ?? '';
 
                         $sub = $qty * $price;
@@ -961,7 +1033,8 @@ $diff_ship_checked = ($val('diff_shp_add','N') === 'Y');
                     <tr id="prodRow_<?php echo $t; ?>">
                       <td>
                         <input type="hidden" name="rec_status[]" id="rec_status_<?php echo $t; ?>" value="upd">
-                        <input type="hidden" name="item_srl_no[]" id="item_srl_no_<?php echo $t; ?>" value="<?php echo htmlspecialchars((string)($r['item_srl_no'] ?? $t)); ?>">
+                        <input type="hidden" name="item_srl_no[]" id="item_srl_no_<?php echo $t; ?>" value="<?php echo htmlspecialchars((string)($r['item_srl_no'] ?? 0)); ?>">
+                        <input type="hidden" name="dc_details_id[]" id="dc_details_id_<?php echo $t; ?>" value="<?php echo htmlspecialchars((string)($r['dc_details_id'] ?? 0)); ?>">						
                         <input type="hidden" name="ref_order_details_id[]" value="<?php echo htmlspecialchars((string)$ref_odid); ?>">
                         <input type="hidden" name="discount_mode[]" value="<?php echo htmlspecialchars((string)$disc_mode); ?>">
                         <input type="hidden" name="discount_amt[]" value="<?php echo htmlspecialchars((string)$disc_amt); ?>">
@@ -1297,10 +1370,11 @@ function addItemLineRow(it) {
   $tr.append($('<td/>').append(
     $('<input/>', { type:'hidden', name:'rec_status[]', id:'rec_status_' + t, value:'new' }),
     $('<input/>', { type:'hidden', name:'item_srl_no[]', id:'item_srl_no_' + t, value:'0' }),
+	$('<input/>', { type:'hidden', name:'dc_details_id[]', id:'dc_details_id_' + t, value:'0' }),
     $('<input/>', { type:'hidden', name:'ref_order_details_id[]', value:'' }),
-    $('<input/>', { type:'hidden', name:'discount_mode[]', value:'' }),
+    $('<input/>', { type:'hidden', name:'discount_mode[]', value:'NONE' }),
     $('<input/>', { type:'hidden', name:'discount_amt[]', value:'0' }),
-    $('<input/>', { type:'hidden', name:'discount_pct[]', value:'' }),
+    $('<input/>', { type:'hidden', name:'discount_pct[]', value:'0' }),
 
     $('<input/>', { type:'hidden', name:'item_id[]', value:itemId }),
     $('<input/>', { type:'text', class:'input-md', readonly:true, id:'item_name_' + t, name:'item_name[]', value:name }),

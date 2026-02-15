@@ -117,11 +117,12 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
-<title> Euphoria Bahi - My Business</title>
+<title> Euphoria Apps - My Business</title>
 <link rel="shortcut icon" type="image/icon" href="image/icon-main.png"/>
 <meta name="description" content="Business Classifieds/Listing for Local Business" />
 <meta name="keywords" content="Business Classifieds, Free Business Listing" />
-<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta charset="utf-8" />
 <META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
 <META HTTP-EQUIV="EXPIRES" CONTENT="0">
 
@@ -178,9 +179,9 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
         <th>Email<br/>Website</th>
         <th>Address</th>
         <th>Manage Profile</th>
-        <th>Billing Desktop</th>
-        <th>e-Commerce</th>
-        <th>Godam</th>
+		<?php foreach (($availableProducts ?? []) as $code => $meta): ?>
+		  <th><?= htmlspecialchars($meta['label'] ?? $code, ENT_QUOTES, 'UTF-8') ?></th>
+		<?php endforeach; ?>		
       </tr>
     </thead>
 
@@ -192,7 +193,8 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
           $stmtBiz = $dbh->prepare($base_qry);
           $stmtBiz->execute([':email1' => $if_login, ':email2' => $if_login]);
       } catch (Throwable $e) {
-          echo '<tr><td colspan="11">Error loading businesses.</td></tr>';
+		  $colspan = 8 + count($availableProducts ?? []);
+          echo '<tr><td colspan="'.(int)$colspan.'">Error loading businesses.</td></tr>';
           $stmtBiz = null;
       }
 
@@ -219,9 +221,17 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
               );
 
               // Per-app subscription access (prod_item_name values must match these codes)
-              $billingAccess = getBizAppAccess($dbh, $bizId, 'billing'); // Billing Desktop
+			  $appAccess = [];
+				foreach ($availableProducts as $code => $meta) {
+					$appAccess[$code] = getBizAppAccess($dbh, $bizId, (string)$code);
+				}
+
+/*			  
+              $bahiAccess = getBizAppAccess($dbh, $bizId, 'bahi'); // Billing Desktop
               $ecomAccess    = getBizAppAccess($dbh, $bizId, 'ecom');    // e-Commerce
               $godamAccess   = getBizAppAccess($dbh, $bizId, 'godam');   // Godam / warehouse
+*/			  
+			  
       ?>
       <tr>
         <td><?php echo $i; ?></td>
@@ -270,7 +280,7 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
                  htmlspecialchars($row['biz_city'], ENT_QUOTES, 'UTF-8');
           ?>
         </td>
-$bizName
+
         <!-- Manage Profile -->
         <td>
           <?php if ($canEditProfile): ?>
@@ -286,52 +296,30 @@ $bizName
           <?php endif; ?>
         </td>
 
-        <!-- Billing Desktop -->
-        <td style="text-align:center;">
-          <?php if ($billingAccess['enabled']): ?>
-            <form action="bahi/pos-index.php" method="POST">
-              <input type="hidden" name="biz_id" value="<?php echo $bizId; ?>"/>
-              <input type="hidden" name="user_email" value="<?php echo htmlspecialchars($if_login, ENT_QUOTES, 'UTF-8'); ?>"/>
-              <button class="btn-floating btn-large" type="submit" name="OWNER_POS">
-                <span class="material-symbols-outlined">point_of_sale</span>
-              </button>
-            </form>
-          <?php else: ?>
-            <span class="text-muted">Subscription inactive</span>
-          <?php endif; ?>
-        </td>
+		<?php foreach (($availableProducts ?? []) as $code => $meta): ?>
+		  <td style="text-align:center;">
+			<?php if (!empty($appAccess[$code]['enabled'])): ?>
+			  <form action="<?= htmlspecialchars($meta['app_path'] ?? '#', ENT_QUOTES, 'UTF-8') ?>" method="POST">
+				<input type="hidden" name="biz_id" value="<?= (int)$bizId ?>"/>
+				<input type="hidden" name="user_email" value="<?= htmlspecialchars($if_login, ENT_QUOTES, 'UTF-8'); ?>"/>
+				<button class="btn-floating btn-large" type="submit" name="OWNER_POS">
+				  <span class="material-symbols-outlined">
+					<?= htmlspecialchars($meta['icon'] ?? 'apps', ENT_QUOTES, 'UTF-8') ?>
+				  </span>
+				</button>
+			  </form>
+			<?php else: ?>
+			  <span class="text-muted">Subscription inactive</span>
+			  <!-- optional debug label -->
+			  <!-- <div class="badge-sub badge-sub-inactive"><?= htmlspecialchars($appAccess[$code]['label'] ?? '', ENT_QUOTES, 'UTF-8') ?></div> -->
+			<?php endif; ?>
+		  </td>
+		<?php endforeach; ?>
 
-        <!-- e-Commerce -->
-        <td style="text-align:center;">
-          <?php if ($ecomFeature === 'Y' && $ecomAccess['enabled']): ?>
-            <form action="ecom/ecom-index.php" method="POST">
-              <input type="hidden" name="biz_id" value="<?php echo $bizId; ?>"/>
-              <input type="hidden" name="user_email" value="<?php echo htmlspecialchars($if_login, ENT_QUOTES, 'UTF-8'); ?>"/>
-              <button class="btn-floating btn-large" type="submit" name="OWNER_POS">
-                <span class="material-symbols-outlined">shopping_cart_checkout</span>
-              </button>
-            </form>
-          <?php elseif ($ecomFeature !== 'Y'): ?>
-            <span class="text-muted">N/A</span>
-          <?php else: ?>
-            <span class="text-muted">Subscription inactive</span>
-          <?php endif; ?>
-        </td>
 
-        <!-- Godam -->
-        <td style="text-align:center;">
-          <?php if ($godamAccess['enabled']): ?>
-            <form action="gdm/gdm-index.php" method="POST">
-              <input type="hidden" name="biz_id" value="<?php echo $bizId; ?>"/>
-              <input type="hidden" name="user_email" value="<?php echo htmlspecialchars($if_login, ENT_QUOTES, 'UTF-8'); ?>"/>
-              <button class="btn-floating btn-large" type="submit" name="OWNER_POS">
-                <span class="material-symbols-outlined">warehouse</span>
-              </button>
-            </form>
-          <?php else: ?>
-            <span class="text-muted">Subscription inactive</span>
-          <?php endif; ?>
-        </td>
+
+
+
 
       </tr>
       <?php

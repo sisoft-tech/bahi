@@ -345,11 +345,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
 
   <style>
     body { background-color:#ccf2ff; }
-    .fld12 { width: 12ch; max-width: 12ch; }
     .totbox { font-weight:bold; }
     .totrow td { background:#f5f5f5; }
 	
 	.fld8 { width: 8ch; max-width: 8ch; }
+    .fld12 { width: 12ch; max-width: 12ch; }
 	
 	td.disc-mode { min-width: 90px; }
 	td.disc-val  { min-width: 90px; }

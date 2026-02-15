@@ -27,6 +27,7 @@ if (isset($_POST['searchbttn'])) {
 $toDatePlus1 = date('Y-m-d', strtotime($toDate . ' +1 day'));
 
 // Mode: search/export
+/*
 $mode = $_POST['mode'] ?? 'search';
 if ($mode === 'export_dc_party') {
   header("Location: export-dc-party.php?from={$fromDate}&to={$toDate}");
@@ -36,6 +37,7 @@ if ($mode === 'export_dc_item') {
   header("Location: export-dc-item.php?from={$fromDate}&to={$toDate}");
   exit;
 }
+*/
 
 function e($s) {
   return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -56,6 +58,8 @@ $stmt->execute([
   ':toDatePlus1' => $toDatePlus1
 ]);
 $dcs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+if ($debug)
+	$stmt->debugDumpParams() ;
 
 // 2) Prepared statement for item-details per row (2nd query per row, as requested)
 $item_stmt = $dbh->prepare("
@@ -99,6 +103,19 @@ $item_stmt = $dbh->prepare("
         content: attr(data-title);
       }
     }
+	
+	
+  /* keep serial tight (from earlier) */
+	  th.col-srl, td.col-srl {
+		width: 34px;
+		max-width: 34px;
+		padding-left: 4px !important;
+		padding-right: 4px !important;
+		text-align: center;
+		white-space: nowrap;
+	  }
+
+	
   </style>
 </head>
 
@@ -152,7 +169,7 @@ $item_stmt = $dbh->prepare("
            style="text-align:center; margin-bottom:80px;">
       <thead>
         <tr>
-          <th>#</th>
+          <th class="col-srl"0>#</th>
           <th>Date</th>
           <th>DC Num</th>
           <th>Party</th>
@@ -177,8 +194,8 @@ $item_stmt = $dbh->prepare("
       ?>
       <tbody>
         <tr>
-          <td data-title="#"><?php echo $i++; ?></td>
-          <td data-title="Date"><?php echo e($row['dc_dt']); ?></td>
+          <td class="col-srl" data-title="#"><?php echo $i++; ?></td>
+          <td data-title="Date"><?php echo e(date('d-m-Y', strtotime($row['dc_dt']))); ?></td>
           <td data-title="DC Num"><?php echo e($row['dc_num']); ?></td>
           <td data-title="Party"><?php echo e($row['bil_party_name']); ?></td>
           <td data-title="State"><?php echo e($row['bil_state']); ?></td>
