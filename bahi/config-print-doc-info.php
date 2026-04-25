@@ -105,12 +105,14 @@ Bank rule:
 
 		  $tmp = "Bank: " . htmlspecialchars($bank_name, ENT_QUOTES, 'UTF-8');
 		  if ($bank_branch !== '') $tmp .= " | Branch: " . htmlspecialchars($bank_branch, ENT_QUOTES, 'UTF-8');
+		  if ($bank_holder !== '')  $tmp .= "<br>A/c Holder Name :" . htmlspecialchars($bank_holder, ENT_QUOTES, 'UTF-8');		  
 		  if ($bank_ac_no !== '')  $tmp .= "<br>A/c No: " . htmlspecialchars($bank_ac_no, ENT_QUOTES, 'UTF-8');
 		  if ($bank_ifsc !== '')   $tmp .= " | IFSC: " . htmlspecialchars($bank_ifsc, ENT_QUOTES, 'UTF-8');
 		  $bank_line_html = $tmp;
 
 		  $tmp2 = "Bank: " . $bank_name;
 		  if ($bank_branch !== '') $tmp2 .= " | Branch: " . $bank_branch;
+  		  if ($bank_holder !== '') $tmp2 .= "\nA/c Holder Name: " . $bank_holder;
 		  if ($bank_ac_no !== '')  $tmp2 .= "\nA/c No: " . $bank_ac_no;
 		  if ($bank_ifsc !== '')   $tmp2 .= " | IFSC: " . $bank_ifsc;
 		  $bank_line_text = $tmp2;
@@ -148,6 +150,8 @@ function print_doc_pgm(string $doc_type, int $fmt): string {
   if ($doc_type === 'SALES') {
     if ($fmt === 1) return "bill-share-view.php";
     if ($fmt === 2) return "bill-share-view2.php";
+	if ($fmt == 3) return "bill-pos-print.php" ;
+
     return "bill-share-view.php";
   }
 

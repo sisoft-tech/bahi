@@ -180,7 +180,7 @@ function printQuote(qnum){
     <table style="width: 100%;">
       <tr>
         <td style="width:15%;">
-          <?php if (!empty($logo_img_loc)) echo "<img src='../$logo_img_loc' width='200px'>"; ?>
+          <?php if (!empty($logo_img_loc)) echo "<img src='../$logo_img_loc' width='120px'>"; ?>
         </td>
         <td style="text-align:center;">
           <h2 style="color:red;font-weight:bold;"><?php echo $comp_name; ?></h2>
@@ -225,13 +225,16 @@ function printQuote(qnum){
     <table style="width: 100%;">
       <tr>
         <td style="width:100%;padding-left:20px;padding-top:10px;padding-bottom:10px;">
-          <b>Bill To:</b><br>
+          <b>Quote To:</b><br>
           Name: <?php echo htmlspecialchars($header['party_name'] ?? ''); ?><br>
           Address: <?php echo htmlspecialchars($header['party_address'] ?? ''); ?><br>
           State: <?php echo htmlspecialchars($header['party_state'] ?? ''); ?>-<?php echo htmlspecialchars($header['party_pincode'] ?? ''); ?><br>
-          Contact: <?php echo htmlspecialchars($header['party_phone'] ?? ''); ?><br>
-          GSTIN: <?php echo htmlspecialchars($header['party_gstin'] ?? ''); ?><br>
-          Email: <?php echo htmlspecialchars($header['party_email'] ?? ''); ?><br>
+          Phone: <?php echo htmlspecialchars($header['party_phone'] ?? ''); ?><br>
+		  <?php
+		  $party_gstin = htmlspecialchars($header['party_gstin'] ?? '') ;
+          if ($party_gstin !== '') echo "GSTIN: $party_gstin <br>" ;           
+			$party_email = htmlspecialchars($header['party_email'] ?? '') ;
+			if ($party_email !== '') echo "Email: $party_email <br>" ?>
           <b>GST Type:</b> <?php echo htmlspecialchars($gst_txn_type); ?>
         </td>
       </tr>
@@ -249,7 +252,7 @@ function printQuote(qnum){
         <col style="width: 60px;">      <!-- HSN -->
         <col style="width: 60px;">      <!-- GST %-->		
         <col style="width: 60px;">      <!-- UOM -->
-        <col style="width: auto;">      <!-- Qty -->
+        <col style="width: 60px;">      <!-- Qty -->
         <col style="width: auto;">      <!-- Unit Price -->
         <?php if ($quote_discount_count > 0) echo '<col style="width: 75px;">'; ?>  <!-- Discount -->
         <col style="width: auto;">      <!-- Taxable -->
@@ -286,7 +289,13 @@ function printQuote(qnum){
         <td style="text-align:right;padding-right:3px;"><?php echo htmlspecialchars($row['hsn_code'] ?? ''); ?></td>
         <td style="text-align:right;padding-right:3px;"><?php echo htmlspecialchars($row['gst_pct'] ?? ''); ?></td>
         <td style="text-align:center;"><?php echo htmlspecialchars($row['uom'] ?? ''); ?></td>
-        <td style="text-align:right;padding-right:3px;"><?php echo htmlspecialchars($row['qty'] ?? ''); ?></td>
+        <td style="text-align:center;">
+			<?php 
+				$qtyStr = trim((string)($row['qty'] ?? '0'));     // e.g. "1.000"
+				$qtyOut = rtrim(rtrim($qtyStr, '0'), '.');
+				if ($qtyOut === '' || $qtyOut === '-0') $qtyOut = '0';
+				echo htmlspecialchars($qtyOut, ENT_QUOTES, 'UTF-8');			?>
+		</td>
         <td style="text-align:right;padding-right:3px;"><?php echo htmlspecialchars($row['price'] ?? ''); ?></td>
 
         <?php if ($quote_discount_count > 0): ?>
@@ -359,7 +368,10 @@ function printQuote(qnum){
 		
 		<?php if (($show_bank_ac ?? 'N') === 'Y' && !empty($bank_line_html)): ?>
 			<div style="font-size:11px; margin-top:6px; line-height:1.3;">
-				<?php echo $bank_line_html; ?>
+				<?php 
+					echo "<b> Bank Details :</b> <br>" ; 
+					echo $bank_line_html; 
+				?>
 			</div>
 		<?php endif; ?>
 		

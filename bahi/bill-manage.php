@@ -4,7 +4,7 @@
   include 'include/dbo.php';
   include 'include/session.php';
 
-  $ewbFeature = 'N';
+  $enable_ewb = 'N';
   $debug = 0;
 
   $dbh= new dbo() ;
@@ -16,9 +16,12 @@
 	}
 
   include 'company-info.php';
-  include 'config-sales-invoice-info.php';
+  
+  $doc_type = "SALES" ;
+  
+  include 'config-print-doc-info.php';
 
-  $invoice_format_pgm = invoice_fmt_pgm($sale_invoice_format);
+  $invoice_format_pgm = print_doc_pgm($doc_type, 1 );
 
   if (isset($_POST['searchbttn'])) {
     $fromDate = $_POST['searchtext1'];
@@ -196,7 +199,7 @@ function confirmDelete(delete_id) {
         <th>Total Tax</th>
 		<th>Net Amount</th>
 		<th>Paid Amount/<br>Receipt</th>
-        <?php if ($ewbFeature == 'Y') echo "<th>eWay Bill</th>"; ?>
+        <?php if ($enable_ewb == 'Y') echo "<th>eWay Bill</th>"; ?>
         <th>Created By</th>
 		<th>View</th>
 		<th>Update/Print</th>
@@ -264,18 +267,23 @@ function confirmDelete(delete_id) {
 		
         <?php endif; ?>
       </td>
-      <?php if ($ewbFeature == 'Y'):
+      <?php if ($enable_ewb == 'Y'):
+	    /* This is Tax Invoice, so docType will be "INV" */
+		$docType = "INV" ;
         echo "<td>";
         if ($row['ewb_num'] == 0): ?>
-          <form action="eway-bill-add.php" method="POST">
+          <form action="ewb-add.php" method="POST">
             <input type="hidden" name="biz_id" value="<?php echo $biz_id; ?>" />
-            <input type="hidden" name="inv_num" value="<?php echo $row['invoice_num']; ?>" />
-            <input type="hidden" name="txn_type" value="<?php echo $row['txn_type']; ?>" />
+            <input type="hidden" name="doc_num" value="<?php echo $row['invoice_num']; ?>" />
+            <input type="hidden" name="doc_type" value="<?php echo $docType; ?>" />
+			<input type="hidden" name="txn_type" value="<?php echo $row['txn_type']; ?>" />			
             <input type="hidden" name="src_loc" value="bill-manage" />
-            <input type="submit" class="btn btn-warning" value="Generate EWB" />
+            <input type="submit" class="btn btn-warning" name="AddEWB" value="+ EWB" />
           </form>
         <?php else:
-          echo $row['ewb_num'] . "<br><a href='https://{$row['ewb_url']}' target='_blank'>Download EWB</a><br>Manage EWB";
+          echo $row['ewb_num'] ;
+//		  echo $row['ewb_num'] . "<br><a href='https://{$row['ewb_url']}' target='_blank'>Download EWB</a><br>Manage EWB";
+
         endif;
         echo "</td>";
       endif; ?>

@@ -2,9 +2,9 @@
 ob_start();
 session_start();
 include 'include/dbi.php';
+include 'include/dbo.php' ;
 include 'include/session.php';
 include 'include/param.php';
-include 'include/PDOCon.php' ;
 include 'include/stock_journal.php' ;
 
 checksession();

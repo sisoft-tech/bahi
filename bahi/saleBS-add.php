@@ -85,8 +85,9 @@ $doc_num = $doc_prefix. substr(str_repeat($sno_pad, $len_sno) . $doc_sno, -$len_
 
 
 /* Voucher Number Generation - End */
-	
 
+
+	
     $gstamount = 0;
     $hsn_code = 0;
     $std_rate = 0;
@@ -94,7 +95,7 @@ $doc_num = $doc_prefix. substr(str_repeat($sno_pad, $len_sno) . $doc_sno, -$len_
     $amount = 0;
     $gst = 0;
 
-if (isset($_POST["submit"])) {
+if (isset($_POST["submit"])) {                     //**** Process Submit - Transaction Save ******/
 	try {
 		$dbh->beginTransaction();
 		
@@ -121,7 +122,6 @@ if (isset($_POST["submit"])) {
 			$voucher_num = $doc_num ;
 		}
 
-		
 		$voucher_date = $_POST["voucher_date"] ;
 		$ord_ref_num = $_POST["ord_ref_num"] ; 
 		$ord_ref_date = trim((string)($_POST['ord_ref_date'] ?? ''));
@@ -133,45 +133,103 @@ if (isset($_POST["submit"])) {
 		$party_gstin = $_POST["party_gstin"] ;
 		$remark_txn = $_POST["remark_txn"] ;
 
-		$head_sql = "INSERT INTO `table_invoice_header`(`txn_type`, `biz_id`, `invoice_num`, `invoice_dt`, `ref_doc_no`, `ref_doc_date`, 
-		`note`,`invoice_cust_id`, `cust_name`, `bill_to_address`, `bill_to_state`,  `bill_to_pincode`, `bill_to_phone`, `bill_to_gstin`,  `gst_txn_type`,  `invoice_created_by`, `created_dtm`)	
-		values ('$txn_type','$biz_id','$voucher_num','$voucher_date','$ord_ref_num','$ord_ref_date', '$remark_txn', '$party_id','$party_name','$party_address','$party_state','$party_pincode','$party_phone','$party_gstin','$gst_txn_type','$login_user','$dtm')";
-		
-		if ($debug) echo "<br>".$head_sql ;
-		$result= $dbh->exec($head_sql) ;
-		if ($result === false) {
-					$error = $dbh->errorCode() ;
-					echo $error ." Exiting .." ;
-					print_r($dbh->errorInfo());
-					error_log("1.saleBS-add:".$error.":".$head_sql);
-					throw new RuntimeException("Error in Saving Invoice Header Info -");
-				}	
+		// ** Check Duplicate voucher number prior to insert ***
+		$chk = $dbh->prepare("
+			SELECT COUNT(*) 
+			FROM table_invoice_header 
+			WHERE biz_id = :biz_id 
+			  AND txn_type = :txn_type 
+			  AND invoice_num = :invoice_num
+		");
+
+		$chk->execute([
+			':biz_id' => $biz_id,
+			':txn_type' => $txn_type,
+			':invoice_num' => $voucher_num
+		]);
+
+		if ((int)$chk->fetchColumn() > 0) {
+			throw new RuntimeException("Voucher number already exists.");
+		}
+
+		// ** Check Duplicate voucher number prior to insert ***
+
+		$head_stmt = $dbh->prepare("
+			INSERT INTO table_invoice_header
+			(
+				txn_type, biz_id, invoice_num, invoice_dt, ref_doc_no, ref_doc_date,
+				note, invoice_cust_id, cust_name, bill_to_address, bill_to_state,
+				bill_to_pincode, bill_to_phone, bill_to_gstin, gst_txn_type,
+				invoice_created_by, created_dtm
+			)
+			VALUES
+			(
+				:txn_type, :biz_id, :invoice_num, :invoice_dt, :ref_doc_no, :ref_doc_date,
+				:note, :invoice_cust_id, :cust_name, :bill_to_address, :bill_to_state,
+				:bill_to_pincode, :bill_to_phone, :bill_to_gstin, :gst_txn_type,
+				:invoice_created_by, :created_dtm
+			)
+		");
+
+		$head_stmt->execute([
+			':txn_type'           => $txn_type,
+			':biz_id'             => $biz_id,
+			':invoice_num'        => $voucher_num,
+			':invoice_dt'         => $voucher_date,
+			':ref_doc_no'         => $ord_ref_num,
+			':ref_doc_date'       => $ord_ref_date,
+			':note'               => $remark_txn,
+			':invoice_cust_id'    => $party_id,
+			':cust_name'          => $party_name,
+			':bill_to_address'    => $party_address,
+			':bill_to_state'      => $party_state,
+			':bill_to_pincode'    => $party_pincode,
+			':bill_to_phone'      => $party_phone,
+			':bill_to_gstin'      => $party_gstin,
+			':gst_txn_type'       => $gst_txn_type,
+			':invoice_created_by' => $login_user,
+			':created_dtm'        => $dtm
+		]);
 
 		$invoice_id = $dbh->lastInsertId();
 
-		if (isset($_POST['diff_ship'] )) {
-			$shp_party_name 	= $_POST["party2_name"] ;
-			$shp_party_address 	= $_POST["party2_address"] ;
-			$shp_party_state 	= $_POST["party2_state"] ;	
-			$shp_party_pincode 	= $_POST["party2_pincode"] ;
-			$shp_party_phone 	= $_POST["party2_phone"] ;		
-			$shp_party_gstin 	= $_POST["party2_gstin"] ;
-			
-			$upd_shp_party = "UPDATE table_invoice_header set diff_shp_add='Y', shp_party_name = '$shp_party_name', shp_address = '$shp_party_address', shp_state = '$shp_party_state', shp_pincode = '$shp_party_pincode' , shp_phone = '$shp_party_phone' , shp_gstin = '$shp_party_gstin' where invoice_id = $invoice_id " ;
-		}
-	else {
-				$upd_shp_party = "UPDATE table_invoice_header set diff_shp_add='N', shp_party_name = '', shp_address = '', shp_state = '', shp_pincode = '' , shp_phone = '' , shp_gstin = '' where invoice_id = $invoice_id " ;			
+
+			$ship_stmt = $dbh->prepare("
+				UPDATE table_invoice_header
+				SET diff_shp_add = :diff_shp_add,
+					shp_party_name = :shp_party_name,
+					shp_address = :shp_address,
+					shp_state = :shp_state,
+					shp_pincode = :shp_pincode,
+					shp_phone = :shp_phone,
+					shp_gstin = :shp_gstin
+				WHERE invoice_id = :invoice_id
+			");
+
+			if (isset($_POST['diff_ship'])) {
+				$ship_stmt->execute([
+					':diff_shp_add'   => 'Y',
+					':shp_party_name' => $_POST["party2_name"],
+					':shp_address'    => $_POST["party2_address"],
+					':shp_state'      => $_POST["party2_state"],
+					':shp_pincode'    => $_POST["party2_pincode"],
+					':shp_phone'      => $_POST["party2_phone"],
+					':shp_gstin'      => $_POST["party2_gstin"],
+					':invoice_id'     => $invoice_id
+				]);
+			} else {
+				$ship_stmt->execute([
+					':diff_shp_add'   => 'N',
+					':shp_party_name' => '',
+					':shp_address'    => '',
+					':shp_state'      => '',
+					':shp_pincode'    => '',
+					':shp_phone'      => '',
+					':shp_gstin'      => '',
+					':invoice_id'     => $invoice_id
+				]);
 			}
-			if ($debug) echo "<br>".$upd_shp_party ;
-			
-			$result=$dbh->exec($upd_shp_party);
-			if ($result === false) {
-				$error = $dbh->errorCode() ;
-				echo $error ." Exiting .." ;
-				print_r($dbh->errorInfo());
-				error_log("2.saleBS-add:".$error.":".$upd_shp_party);
-			    throw new RuntimeException("Error updating shipping address");
-			}	
+
 
 		/* Process Lines Items  */
 
@@ -180,11 +238,30 @@ if (isset($_POST["submit"])) {
 		$total_sgst = 0 ;
 		$total_igst = 0 ;
 		$total_gst_amt = 0 ;
+		$round_off_amt = 0;
 
 		$items = $_POST["item_id"] ?? [];
 		if (empty($items)) {
 			throw new RuntimeException("Add at least one item.");
 		}
+
+
+		$det_stmt = $dbh->prepare("
+				INSERT INTO table_invoice_details
+				(
+					biz_id, parent_invoice_id, item_srl_no, item_id, item_type,
+					item_name, item_note, uom, qty, price,
+					discount_mode, discount_amt, discount_pct, total_amt,
+					hsn_code, gst_pct, CGST, SGST, IGST, gst_amt
+				)
+				VALUES
+				(
+					:biz_id, :invoice_id, :item_srl_no, :item_id, :item_type,
+					:item_name, :item_note, :uom, :qty, :price,
+					:discount_mode, :discount_amt, :discount_pct, :total_amt,
+					:hsn_code, :gst_pct, :cgst, :sgst, :igst, :gst_amt
+				)
+			");
 		
 		for ($i = 0; $i < count($_POST["item_id"]); $i++) {
 				$rec_status = $_POST['rec_status'][$i];	  // Values - new, upd, del 		
@@ -220,11 +297,17 @@ if (isset($_POST["submit"])) {
 
 				
 				if ($discount_mode == 'AMT') {
+					if ($discAmt < 0) $discAmt = 0;
+					if ($discAmt > $std_price) $discAmt = $std_price;
+					
 					$discount_amt = $discAmt ;
 					$discount_pct = 0 ;
 					$finalPrice = $std_price - $discAmt ; 
 				}
 				else if ($discount_mode == 'PCT'){
+					if ($discAmt < 0) $discAmt = 0;
+					if ($discAmt > 100) $discAmt = 100;
+					
 					$discount_amt = 0 ;
 					$discount_pct = $discAmt ;
 					$finalPrice = $std_price - ( $std_price * $discAmt)/100 ;
@@ -251,22 +334,30 @@ if (isset($_POST["submit"])) {
 				$gst_amt = $cgst + $sgst + $igst ;
 				$lineTotal=$subTotal + $gst_amt ;
 				$item_srl_no = $i +1 ;
-				$det_sql="INSERT INTO `table_invoice_details`(`biz_id`,`parent_invoice_id`, `item_srl_no`, `item_id`, `item_type`,`item_name`, 
-				`uom`, `qty`, `price`, `discount_mode`,`discount_amt`,`discount_pct`,`total_amt`,`hsn_code`, `gst_pct`, `CGST`, `SGST`, `IGST`, `gst_amt`)
-				values ('$biz_id','$invoice_id',$item_srl_no, $item_id, '$item_type','$item_name','$uom', '$sale_qty', '$std_price',
-				'$discount_mode',$discount_amt,$discount_pct, $subTotal,'$hsn_sac', $item_gst, $cgst, $sgst, $igst, $gst_amt)" ;
-				if ($debug) echo "<br>".$det_sql ;
 
-				$result= $dbh->exec($det_sql) ;
-				if ($result === false) {
-					$error = $dbh->errorCode() ;
-					echo $error ." Exiting .." ;
-					print_r($dbh->errorInfo());
-					error_log("3.saleBS-add:".$error.":".$det_sql);
-					throw new RuntimeException("Error saving invoice items details");
-
-				}	
-	
+					$det_stmt->execute([
+						':biz_id'        => $biz_id,
+						':invoice_id'    => $invoice_id,
+						':item_srl_no'   => $item_srl_no,
+						':item_id'       => $item_id,
+						':item_type'     => $item_type,
+						':item_name'     => $item_name,
+						':item_note'     => $remark_item,
+						':uom'           => $uom,
+						':qty'           => $sale_qty,
+						':price'         => $std_price,
+						':discount_mode' => $discount_mode,
+						':discount_amt'  => $discount_amt,
+						':discount_pct'  => $discount_pct,
+						':total_amt'     => $subTotal,
+						':hsn_code'      => $hsn_sac,
+						':gst_pct'       => $item_gst,
+						':cgst'          => $cgst,
+						':sgst'          => $sgst,
+						':igst'          => $igst,
+						':gst_amt'       => $gst_amt
+					]);
+								
 				$invoice_detail_id = $dbh->lastInsertId() ; ;
 
 				// Prevent Stock Deduction for Charges
@@ -277,31 +368,27 @@ if (isset($_POST["submit"])) {
 					$id=$stk_j->insert_stock_journal($biz_id,$item_id, $sale_qty,0, $qty, "Sale Item:$voucher_num",$invoice_id,$invoice_detail_id,"$login_user", "$dtm") ;				
 				}	
 				
+				if ($item_type === 'ROUND_OFF') {
+					$round_off_amt += $subTotal;
+				} 
+				else {
 				$outp = $outp + $subTotal;
 				$total_cgst = $total_cgst + $cgst ;
 				$total_sgst = $total_sgst + $sgst ;
 				$total_igst = $total_igst + $igst ;
 				$total_gst_amt = $total_gst_amt + $gst_amt ;
+				}
 		}
 		
 		 // 4) Update header totals
 		 
-			$net_amt=round($outp + $total_gst_amt,0) ;  // Round to nearest Rupee, no paise -	
+			$net_amt=round($outp + $total_gst_amt + $round_off_amt,0) ;  // Round to nearest Rupee, no paise -	
 			$update_invoice_header = "UPDATE table_invoice_header set total_amt=  $outp , CGST= $total_cgst, SGST=$total_sgst,
 			 igst=$total_igst, total_tax = $total_gst_amt, net_amt = $net_amt  where invoice_id = $invoice_id " ;
 			 
 			if ($debug) echo $update_invoice_header ;
 			$result = $dbh->exec($update_invoice_header) ;
-			
-			if ($result === false) {
-				$error = $dbh->errorCode() ;
-				echo $error ." Exiting .." ;
-				print_r($dbh->errorInfo());
-				error_log("4.saleBS-add:".$error.":".$update_invoice_header);
-			    throw new RuntimeException("4. Error updating invoice amount");
-			}	
-
-			
+					
 			// ===== Ledger Journal Post: SALES (name-based) =====
 
 			$docType   = 'SalesInv';
@@ -328,9 +415,6 @@ if (isset($_POST["submit"])) {
 			$taxTotal = round((float)$total_gst_amt, 2);
 			$grand    = round((float)$net_amt, 2);
 
-			$ideal    = round($untaxed + $taxTotal, 2);
-			$roundAdj = round($grand - $ideal, 2);
-
 			$lines = [];
 			// Dr Customer (net)
 			$lines[] = ['ledger_id'=>$L_AR, 'debit'=>$grand];
@@ -341,11 +425,12 @@ if (isset($_POST["submit"])) {
 			if ($L_SGST && $taxSGST != 0.0) $lines[] = ['ledger_id'=>$L_SGST, 'credit'=>$taxSGST];
 			if ($L_IGST && $taxIGST != 0.0) $lines[] = ['ledger_id'=>$L_IGST, 'credit'=>$taxIGST];
 			// Rounding (if needed)
-			if (abs($roundAdj) >= 0.01) {
-				if ($roundAdj > 0) $lines[] = ['ledger_id'=>$L_ROUND, 'credit'=>$roundAdj];
-				else               $lines[] = ['ledger_id'=>$L_ROUND, 'debit'=>abs($roundAdj)];
+			if ($round_off_amt > 0) {
+				$lines[] = ['ledger_id' => $L_ROUND, 'credit' => $round_off_amt];
+			} elseif ($round_off_amt < 0) {
+				$lines[] = ['ledger_id' => $L_ROUND, 'debit' => abs($round_off_amt)];
 			}
-
+			
 			// Post
 			$lj = new Ledger_Journal($dbh);
 			$lj->postDoubleEntry(
@@ -387,7 +472,7 @@ if (isset($_POST["submit"])) {
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=yes">
 
 
-  <!-- Bootstrap CSS v5.2.1 -->
+  <!-- Bootstrap CSS v3.3.7 -->
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" type="text/css" rel="stylesheet">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"></script>
@@ -435,15 +520,7 @@ if (isset($_POST["submit"])) {
 </style>
   
   <script type="text/javascript" >
-  function OkayToSubmit(){
-	  var party_name = document.getElementById('party_name').value ;
-	  if (party_name==""){
-		  alert("Party must be selected");
-		  return false;
-	  }
-	  else
-		return true ;
-  }
+
  	function searchName()
 	{
 		var biz_id = document.getElementById('biz_id').value ;
@@ -533,46 +610,18 @@ if (isset($_POST["submit"])) {
 	   document.getElementById("party_state").value = obj.state ;
 	   document.getElementById("party_pincode").value = obj.pincode ;
 	   document.getElementById("party_gstin").value = obj.gstin ;
+	   
+	   	recalcAllTotalsSale();
+		updateRoundOffIfPresent();
+
+	   
 	   document.getElementById("ord_ref_num").focus(); 
 	  }
 	 });
 	
-	recalcAllTotalsSale();
-	updateRoundOffIfPresent();
 	
 	}
 	
-	// Will not be used as data will go thru account ledger module
-	function addParty(){
-		var c_name = $("#cst_name").val() ;
-		var c_phone = $("#cst_number").val() ;
-		var c_add = $("#cst_address").val() ;
-		var c_email = $("#cst_email").val() ;
-		var c_gstin = $("#cst_gstin").val() ;
-		var c_state = $("#cst_state").val() ;
-		
-
-		alert("Values:"+c_name+":"+c_phone+":"+c_add+":"+c_email+":"+c_gstin+":"+c_state);
-		
-		$.ajax({
-			type: 'post',
-			url: 'bill-customer-add-ajax.php',
-			data: {
-				act_grp : "customer",
-				cst_name:c_name,
-				cst_phone:c_phone,
-				cst_add: c_add,
-				cst_email: c_email,
-				cst_gstin: c_gstin,
-				cst_state: c_state
-			},
-			success: function (response) {
-				set_party(response) ;
-			}
-	});
-	
-		return false ;
-	}  
  
  function set_voucher_numbering_mode(){
 	 document.getElementById("manual").checked = true ;
@@ -666,7 +715,7 @@ $(function () {
 <main>
   <div class="container">
 	<div id="flashArea"></div>  
-    <form  id="saleForm" method='POST' onSubmit="return OkayToSubmit()">
+    <form  id="saleForm" method='POST' >
 		 	<input type="hidden" id="biz_id" name="biz_id" value="<?php echo $biz_id;?>">	
             <input type="hidden" id ="src_loc" name ="src_loc" value ="<?php echo $src_loc;?>"/>			  		
       
@@ -1230,7 +1279,8 @@ function addSaleItemRow(it){
     $('<input/>', { type:'text', class:'input-md', readonly:true, name:'item_name[]', id:'item_name_' + t, value:name })
   );
 
-  var $remark = $('<input/>', { type:'text', class:'input-md', name:'remark_item[]', id:'remark_item_' + t, placeholder:'Item remark' });
+  var $remark = $('<textarea/>', { class: 'form-control input-sm',  name: 'remark_item[]',
+  id: 'remark_item_' + t,   placeholder: 'Item remark',   rows: 2,  style: 'min-width:180px; resize:vertical;' });
   if (String(allowRemarkItem).toUpperCase() === 'N') $remark.css('display','none');
   $nameTd.append('<br>', $remark);
 
@@ -1390,18 +1440,74 @@ if (itemType === 'ROUND_OFF') {
   });
 })();
 
-/* Optional submit guard: require at least one item row */
-$(function(){
-  $('#saleForm').on('submit', function(e){
-    var cnt = $('#js1 input[name="item_id[]"]').length;
-    if (cnt <= 0) {
+/*** Submit guard: require at least one item row with non-zero ***/
+$(function () {
+  $('#saleForm').on('submit', function (e) {
+
+    var $form = $(this);
+
+    // Prevent double-submit after user confirms
+    if ($form.data('saving') === true) {
+      e.preventDefault();
+      return false;
+    }
+	
+	var partyName = $.trim($('#party_name').val() || '');
+
+    if (partyName === '') {
+      alert('Party must be selected.');
+      $('#party_name').focus();
+      e.preventDefault();
+      return false;
+    }
+
+    var hasAnyLine = false;
+    var hasValidLine = false;
+
+    $('#js1 tr[id^="prodRow_"]').each(function () {
+      hasAnyLine = true;
+
+      var t = this.id.split('_')[1];
+
+      var itemType = String($('#item_type_' + t).val() || '').toUpperCase();
+      var qty = parseFloat($('#quantity_' + t).val() || '0');
+
+      if (isNaN(qty)) qty = 0;
+
+      // ROUND_OFF should not be treated as a real sale item
+      if (itemType !== 'ROUND_OFF' && qty > 0) {
+        hasValidLine = true;
+        return false; // break loop
+      }
+    });
+
+    if (!hasAnyLine) {
       alert('Add at least one item.');
       e.preventDefault();
       return false;
     }
+
+    if (!hasValidLine) {
+      alert('At least one item must have quantity greater than zero.');
+      $('#js1 input[name="quantity[]"]').first().focus();
+      e.preventDefault();
+      return false;
+    }
+
+    // Final user confirmation
+    if (!confirm('Proceed to save?')) {
+      e.preventDefault();
+      return false;
+    }
+
+    // User confirmed, now allow submit
+    $form.data('saving', true);
+    $('#saleForm button[type="submit"]').prop('disabled', true).text('Saving...');
+
     return true;
   });
 });
+
 </script>
 
 <script>

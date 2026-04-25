@@ -227,6 +227,7 @@ if (isset($_POST["submit"])) {
         $total_sgst = 0.0;
         $total_igst = 0.0;
         $total_gst_amt = 0.0;
+		$round_off_amt = 0.0;
         $effective_lines = 0;
 
         $n = is_array($_POST["item_id"] ?? null) ? count($_POST["item_id"]) : 0;
@@ -240,11 +241,11 @@ if (isset($_POST["submit"])) {
             $hsn_sac      = $_POST['hsn_sac'][$i] ?? '';
             $uom          = $_POST['uom'][$i] ?? '';
             $std_price    = (float)($_POST['item_price'][$i] ?? 0);
-            $pur_qty      = (float)($_POST['quantity'][$i] ?? 0);
+            $sale_qty      = (float)($_POST['quantity'][$i] ?? 0);
             $item_gst     = (float)($_POST['itemGST'][$i] ?? 0);
 
             // Sanity guards
-            if ($pur_qty < 0) $pur_qty = 0;
+            if ($sale_qty < 0) $sale_qty = 0;
 			if ($item_type !== 'ROUND_OFF' && $std_price < 0) $std_price = 0;
 
 
@@ -254,16 +255,31 @@ if (isset($_POST["submit"])) {
             $discount_amt = 0.0;
             $discount_pct = 0.0;
             if ($discount_mode === 'AMT') {
+				if ($discAmt < 0) $discAmt = 0;
+				if ($discAmt > $std_price) $discAmt = $std_price;
+				
+				
                 $discount_amt = $discAmt;
                 $finalPrice   = $std_price - $discAmt;
             } elseif ($discount_mode === 'PCT') {
+				 if ($discAmt < 0) $discAmt = 0;
+				 if ($discAmt > 100) $discAmt = 100;
+				
                 $discount_pct = $discAmt;
                 $finalPrice   = $std_price - ($std_price * $discAmt) / 100.0;
             } else {
                 $finalPrice   = $std_price;
             }
-            if ($finalPrice < 0) $finalPrice = 0;
+			
+			// Existing negative ROUND_OFF line should not display as zero
+			if ($item_type !== 'ROUND_OFF' && $finalPrice < 0) {
+				$finalPrice = 0;
+			}
 
+
+			$is_inventory_item = ($item_type !== 'CHARGE' && $item_type !== 'ROUND_OFF');
+
+			
             // Delete line: restore stock only for inventory items
             if ($rec_status === "del") {
                 $invoice_details_id = (int)($_POST['invoice_details_id'][$i] ?? 0);
@@ -273,10 +289,10 @@ if (isset($_POST["submit"])) {
                     ->execute([$invoice_details_id]);
 
                 // Stock correction: deleting a sale line => add stock back
-                if ($item_type !== 'CHARGE' && $pur_qty > 0) {
-                    $qty = $item_obj->addItemQty($dbh, $biz_id, $item_id, $pur_qty);
+                if ($is_inventory_item && $sale_qty > 0) {
+                    $qty = $item_obj->addItemQty($dbh, $biz_id, $item_id, $sale_qty);
                     $stk_j->insert_stock_journal(
-                        $biz_id, $item_id, 0, $pur_qty, $qty,
+                        $biz_id, $item_id, 0, $sale_qty, $qty,
                         "Sale Line Deleted:$voucher_num", $upd_inv_id, $invoice_details_id, $login_user, $dtm
                     );
                 }
@@ -285,7 +301,7 @@ if (isset($_POST["submit"])) {
             }
 
             // Compute amounts for new/upd
-            $subTotal = $finalPrice * $pur_qty;
+            $subTotal = $finalPrice * $sale_qty;
 
             if ($gst_txn_type === 'local') {
                 $cgst = $subTotal * ($item_gst / 200.0);
@@ -297,6 +313,7 @@ if (isset($_POST["submit"])) {
                 $sgst = 0.0;
             }
             $gst_amt   = $cgst + $sgst + $igst;
+
 
             // UPDATE existing line
             if ($rec_status === "upd") {
@@ -310,22 +327,22 @@ if (isset($_POST["submit"])) {
                     WHERE invoice_details_id = ?";
                 $stmt = $dbh->prepare($det_sql);
                 $stmt->execute([
-                    $item_id, $item_type, $item_name, $remark_item, $uom, $pur_qty, $std_price,
+                    $item_id, $item_type, $item_name, $remark_item, $uom, $sale_qty, $std_price,
                     $discount_mode, $discount_amt, $discount_pct, $subTotal,
                     $hsn_sac, $item_gst, $cgst, $sgst, $igst, $gst_amt,
                     $invoice_details_id
                 ]);
 
                 // Stock: if qty changed and not a charge, neutralize old then apply new
-                if ($item_type !== 'CHARGE' && $old_qty != $pur_qty) {
+                if ($is_inventory_item && $old_qty != $sale_qty) {
                     if ($old_qty > 0) {
                         $qty = $item_obj->addItemQty($dbh, $biz_id, $item_id, $old_qty);
                         $stk_j->insert_stock_journal($biz_id, $item_id, 0, $old_qty, $qty,
                             "Sale Update Old Qty:$voucher_num", $upd_inv_id, $invoice_details_id, $login_user, $dtm);
                     }
-                    if ($pur_qty > 0) {
-                        $qty = $item_obj->reduceItemQty($dbh, $biz_id, $item_id, $pur_qty);
-                        $stk_j->insert_stock_journal($biz_id, $item_id, $pur_qty, 0, $qty,
+                    if ($sale_qty > 0) {
+                        $qty = $item_obj->reduceItemQty($dbh, $biz_id, $item_id, $sale_qty);
+                        $stk_j->insert_stock_journal($biz_id, $item_id, $sale_qty, 0, $qty,
                             "Sale Update New Qty:$voucher_num", $upd_inv_id, $invoice_details_id, $login_user, $dtm);
                     }
                 }
@@ -340,30 +357,34 @@ if (isset($_POST["submit"])) {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $dbh->prepare($det_sql);
                 $stmt->execute([
-                    $upd_inv_id, $item_srl_no, $item_id, $item_type, $item_name, $remark_item, $uom, $pur_qty, $std_price,
+                    $upd_inv_id, $item_srl_no, $item_id, $item_type, $item_name, $remark_item, $uom, $sale_qty, $std_price,
                     $discount_mode, $discount_amt, $discount_pct, $subTotal, $hsn_sac, $item_gst, $cgst, $sgst, $igst, $gst_amt
                 ]);
 
                 $invoice_detail_id = (int)$dbh->lastInsertId();
 
-                if ($item_type !== 'CHARGE' && $pur_qty > 0) {
-                    $qty = $item_obj->reduceItemQty($dbh, $biz_id, $item_id, $pur_qty);
-                    $stk_j->insert_stock_journal($biz_id, $item_id, $pur_qty, 0, $qty,
+                if ($is_inventory_item && $sale_qty > 0) {
+                    $qty = $item_obj->reduceItemQty($dbh, $biz_id, $item_id, $sale_qty);
+                    $stk_j->insert_stock_journal($biz_id, $item_id, $sale_qty, 0, $qty,
                         "Sale Item:$voucher_num", $upd_inv_id, $invoice_detail_id, $login_user, $dtm);
                 }
             }
 
             // Totals for non-deleted lines
-            $outp         += $subTotal;
-            $total_cgst   += $cgst;
-            $total_sgst   += $sgst;
-            $total_igst   += $igst;
-            $total_gst_amt+= $gst_amt;
+			if ($item_type === 'ROUND_OFF') {
+				$round_off_amt += $subTotal;
+			} else {
+				$outp += $subTotal;
+				$total_cgst += $cgst;
+				$total_sgst += $sgst;
+				$total_igst += $igst;
+				$total_gst_amt += $gst_amt;
+			}
 
             // a line counts as effective if not zeroed out AND not deleted
-            if ($rec_status !== 'del' && ($pur_qty > 0 || $item_type === 'CHARGE')) {
-                $effective_lines++;
-            }
+			if ($rec_status !== 'del' && $item_type !== 'ROUND_OFF' && ( $sale_qty > 0 || $item_type === 'CHARGE' )) {
+				$effective_lines++;
+			}
         }
 
         if ($effective_lines === 0) {
@@ -373,7 +394,7 @@ if (isset($_POST["submit"])) {
         // 5) Update header totals (rounded)
         $untaxed  = round((float)$outp, 2);
         $taxTotal = round((float)$total_gst_amt, 2);
-        $grand    = round($untaxed + $taxTotal, 0); // nearest rupee
+        $grand    = round($untaxed + $taxTotal + $round_off_amt, 0); // nearest rupee
 
         $update_sql = "UPDATE table_invoice_header
                        SET total_amt = ?, CGST = ?, SGST = ?, IGST = ?, total_tax = ?, net_amt = ?
@@ -394,9 +415,7 @@ if (isset($_POST["submit"])) {
             $L_IGST  = ($total_igst > 0) ? ledger_id_by_name($dbh, $biz_id, 'Output IGST') : null;
             $L_ROUND = ledger_id_by_name($dbh, $biz_id, 'Rounding Difference');
 
-            $ideal    = round($untaxed + $taxTotal, 2);
-            $roundAdj = round($grand - $ideal, 2);
-
+			
             $lines = [];
             // Dr Customer
             $L_AR = $party_id ;
@@ -406,11 +425,14 @@ if (isset($_POST["submit"])) {
             if ($L_CGST && $total_cgst!=0.0)$lines[] = ['ledger_id'=>$L_CGST,  'credit'=>round($total_cgst,2)];
             if ($L_SGST && $total_sgst!=0.0)$lines[] = ['ledger_id'=>$L_SGST,  'credit'=>round($total_sgst,2)];
             if ($L_IGST && $total_igst!=0.0)$lines[] = ['ledger_id'=>$L_IGST,  'credit'=>round($total_igst,2)];
-            if (abs($roundAdj) >= 0.01) {
-                if ($roundAdj > 0) $lines[] = ['ledger_id'=>$L_ROUND, 'credit'=>$roundAdj];
-                else               $lines[] = ['ledger_id'=>$L_ROUND, 'debit'=>abs($roundAdj)];
-            }
 
+			if ($round_off_amt > 0) {
+				$lines[] = ['ledger_id' => $L_ROUND, 'credit' => round($round_off_amt, 2)];
+			} elseif ($round_off_amt < 0) {
+				$lines[] = ['ledger_id' => $L_ROUND, 'debit' => abs(round($round_off_amt, 2))];
+			}
+			
+			
 
 			$lj = new Ledger_Journal($dbh);
 
@@ -676,7 +698,7 @@ if (isset($_POST["submit"])) {
 
 <main>
   <div class="container container-md mt-6 p-4">
-    <form id="updateForm" method='POST'>
+    <form id="saleForm" method='POST'>
       <input type="hidden" id="biz_id" name="biz_id" value="<?php echo (int)$biz_id;?>">
       <input type="hidden" id="update_id" name="update_id" value="<?php echo (int)$upd_inv_id;?>">
       <input type="hidden" name="src_loc" value="<?php echo htmlspecialchars($src_loc, ENT_QUOTES);?>">
@@ -939,7 +961,9 @@ if (isset($_POST["submit"])) {
                     $discAmt = 0.0;
                     $finalPrice = $stdPrice;
                   }
-                  if ($finalPrice < 0) $finalPrice = 0;
+				  if ($det_row['item_type'] !== 'ROUND_OFF' && $finalPrice < 0) {
+						$finalPrice = 0;
+					}
                   $subTotal = $finalPrice * (float)$det_row['qty'];
                   $gst_pct  = (float)$det_row['gst_pct'];
                   $itemTotal = $subTotal + ($subTotal*$gst_pct)/100.0;
@@ -973,8 +997,10 @@ if (isset($_POST["submit"])) {
                   echo "<td>";
                   echo "<input id='old_qty_$t' class='form-control form-control-lg' type='hidden' name='old_qty[]' value='".htmlspecialchars($det_row['qty'], ENT_QUOTES)."'>";
                   // Disable qty edit for CHARGE rows
-                  $ro = ($det_row['item_type'] === 'CHARGE') ? "readonly" : "";
-                  echo "<input id='quantity_$t' class='form-control form-control-lg fld12' onchange='showTotalSafe($t)' $ro name='quantity[]' type='number' step='0.001' value='".($det_row['item_type']==='CHARGE' ? 1 : htmlspecialchars($det_row['qty'], ENT_QUOTES))."'>";
+
+				  $ro = ($det_row['item_type'] === 'CHARGE' || $det_row['item_type'] === 'ROUND_OFF') ? "readonly" : "";				  
+                  
+				  echo "<input id='quantity_$t' class='form-control form-control-lg fld12' onchange='showTotalSafe($t)' $ro name='quantity[]' type='number' step='0.001' value='".($det_row['item_type']==='CHARGE' ? 1 : htmlspecialchars($det_row['qty'], ENT_QUOTES))."'>";
                   echo "</td>";
 
                   echo "<td><div id='itemSubTotal_".$t."'>".round($subTotal,2)."</div></td>";
@@ -1072,6 +1098,10 @@ if (isset($_POST["submit"])) {
       row.style.backgroundColor = "white";
       btn.innerHTML = "Remove";
     }
+	
+	recalcAllTotalsSale();
+	updateRoundOffIfPresent();
+  
   }
 </script>
 
@@ -1280,6 +1310,9 @@ function recalcAllTotalsSale(){
   $('#js1 tr[id^="prodRow_"]').each(function(){
     var t = this.id.split('_')[1];
 
+	var recStatus = String($('#rec_status_' + t).val() || '').toLowerCase();
+	if (recStatus === 'del') return;   // skip deleted rows from totals
+
     var sub = parseFloat($('#itemSubTotal_' + t).text() || '0');
     var net = parseFloat($('#itemTotal_' + t).text() || '0');
 
@@ -1371,7 +1404,8 @@ function addSaleItemRow(it){
     $('<input/>', { type:'text', class:'input-md', readonly:true, name:'item_name[]', id:'item_name_' + t, value:name })
   );
 
-  var $remark = $('<input/>', { type:'text', class:'input-md', name:'remark_item[]', id:'remark_item_' + t, placeholder:'Item remark' });
+  var $remark = $('<textarea/>', { class: 'form-control input-sm',  name: 'remark_item[]',
+  id: 'remark_item_' + t,   placeholder: 'Item remark',   rows: 2,  style: 'min-width:180px; resize:vertical;' });
   if (String(allowRemarkItem).toUpperCase() === 'N') $remark.css('display','none');
   $nameTd.append('<br>', $remark);
 
@@ -1436,10 +1470,10 @@ function addSaleItemRow(it){
 
   // CHARGE behavior (same spirit as your existing logic)
   if (itemType === 'CHARGE') {
-    $('#quantity_' + t).val('1').prop('readonly', true);
-    // usually no discount on charges
-	$('#discMode_' + t).val('NONE').css({'pointer-events':'none','background':'#eee'});
-    $('#discAmt_' + t).val('0').prop('readonly', true);
+		$('#quantity_' + t).val('1').prop('readonly', true);
+		// usually no discount on charges
+		$('#discMode_' + t).val('NONE').css({'pointer-events':'none','background':'#eee'});
+		$('#discAmt_' + t).val('0').prop('readonly', true);
   }
 
 	if (itemType === 'ROUND_OFF') {
@@ -1527,18 +1561,79 @@ function addSaleItemRow(it){
   });
 })();
 
-/* Optional submit guard: require at least one item row */
-$(function(){
-  $('#saleForm').on('submit', function(e){
-    var cnt = $('#js1 input[name="item_id[]"]').length;
-    if (cnt <= 0) {
+/*** Submit guard: require at least one item row with non-zero ***/
+$(function () {
+  $('#saleForm').on('submit', function (e) {
+
+    var $form = $(this);
+
+    // Prevent double-submit after user confirms
+    if ($form.data('saving') === true) {
+      e.preventDefault();
+      return false;
+    }
+	
+	var partyName = $.trim($('#party_name').val() || '');
+
+    if (partyName === '') {
+      alert('Party must be selected.');
+      $('#party_name').focus();
+      e.preventDefault();
+      return false;
+    }
+
+    var hasAnyLine = false;
+    var hasValidLine = false;
+
+    $('#js1 tr[id^="prodRow_"]').each(function () {
+
+		var t = this.id.split('_')[1];
+
+		var recStatus = String($('#rec_status_' + t).val() || '').toLowerCase();
+		if (recStatus === 'del') return;
+
+      hasAnyLine = true;
+
+
+      var itemType = String($('#item_type_' + t).val() || '').toUpperCase();
+      var qty = parseFloat($('#quantity_' + t).val() || '0');
+
+      if (isNaN(qty)) qty = 0;
+
+      // ROUND_OFF should not be treated as a real sale item
+      if (itemType !== 'ROUND_OFF' && qty > 0) {
+        hasValidLine = true;
+        return false; // break loop
+      }
+    });
+
+    if (!hasAnyLine) {
       alert('Add at least one item.');
       e.preventDefault();
       return false;
     }
+
+    if (!hasValidLine) {
+      alert('At least one item must have quantity greater than zero.');
+      $('#js1 input[name="quantity[]"]').first().focus();
+      e.preventDefault();
+      return false;
+    }
+
+    // Final user confirmation
+    if (!confirm('Proceed to save?')) {
+      e.preventDefault();
+      return false;
+    }
+
+    // User confirmed, now allow submit
+    $form.data('saving', true);
+    $('#saleForm button[type="submit"]').prop('disabled', true).text('Saving...');
+
     return true;
   });
 });
+
 </script>
 
 <script>
