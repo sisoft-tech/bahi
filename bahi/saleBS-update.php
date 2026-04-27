@@ -19,7 +19,9 @@ $dbh = new dbo();
 $item_obj = new Item();
 $stk_j = new Stock_Journal($dbh);
 
+$txn_type = "SALES";
 $doc_type   = "SALES";
+
 $biz_id     = $_SESSION['biz_id'];
 $login_user = $_SESSION['pos_login'];
 $dtm        = getLocalDtm();
@@ -149,7 +151,7 @@ if (isset($_POST['delete']) && $_POST['delete'] === '1') {
 
 //======= Update Save Invoice ==========
 $save_stage = 0 ;
-if (isset($_POST["submit"])) {
+if (isset($_POST['save_sale_update']) && $_POST['save_sale_update'] === '1') {
     try {
         $dbh->beginTransaction();
 
@@ -352,12 +354,12 @@ if (isset($_POST["submit"])) {
             if ($rec_status === "new") {
                 $item_srl_no = $i + 1;
                 $det_sql = "INSERT INTO table_invoice_details
-                    (parent_invoice_id, item_srl_no, item_id, item_type, item_name, item_note, uom, qty, price,
+                    (biz_id, parent_invoice_id, item_srl_no, item_id, item_type, item_name, item_note, uom, qty, price,
                      discount_mode, discount_amt, discount_pct, total_amt, hsn_code, gst_pct, CGST, SGST, IGST, gst_amt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $dbh->prepare($det_sql);
                 $stmt->execute([
-                    $upd_inv_id, $item_srl_no, $item_id, $item_type, $item_name, $remark_item, $uom, $sale_qty, $std_price,
+                    $biz_id, $upd_inv_id, $item_srl_no, $item_id, $item_type, $item_name, $remark_item, $uom, $sale_qty, $std_price,
                     $discount_mode, $discount_amt, $discount_pct, $subTotal, $hsn_sac, $item_gst, $cgst, $sgst, $igst, $gst_amt
                 ]);
 
@@ -394,7 +396,7 @@ if (isset($_POST["submit"])) {
         // 5) Update header totals (rounded)
         $untaxed  = round((float)$outp, 2);
         $taxTotal = round((float)$total_gst_amt, 2);
-        $grand    = round($untaxed + $taxTotal + $round_off_amt, 0); // nearest rupee
+        $grand    = round($untaxed + $taxTotal + $round_off_amt, 2); // nearest rupee
 
         $update_sql = "UPDATE table_invoice_header
                        SET total_amt = ?, CGST = ?, SGST = ?, IGST = ?, total_tax = ?, net_amt = ?
@@ -413,8 +415,7 @@ if (isset($_POST["submit"])) {
             $L_CGST  = ($total_cgst > 0) ? ledger_id_by_name($dbh, $biz_id, 'Output CGST') : null;
             $L_SGST  = ($total_sgst > 0) ? ledger_id_by_name($dbh, $biz_id, 'Output SGST') : null;
             $L_IGST  = ($total_igst > 0) ? ledger_id_by_name($dbh, $biz_id, 'Output IGST') : null;
-            $L_ROUND = ledger_id_by_name($dbh, $biz_id, 'Rounding Difference');
-
+			$L_ROUND = ($round_off_amt != 0.0) ? ledger_id_by_name($dbh, $biz_id, 'Rounding Difference') : null;
 			
             $lines = [];
             // Dr Customer
@@ -426,14 +427,12 @@ if (isset($_POST["submit"])) {
             if ($L_SGST && $total_sgst!=0.0)$lines[] = ['ledger_id'=>$L_SGST,  'credit'=>round($total_sgst,2)];
             if ($L_IGST && $total_igst!=0.0)$lines[] = ['ledger_id'=>$L_IGST,  'credit'=>round($total_igst,2)];
 
-			if ($round_off_amt > 0) {
+			if ($L_ROUND && $round_off_amt > 0) {
 				$lines[] = ['ledger_id' => $L_ROUND, 'credit' => round($round_off_amt, 2)];
-			} elseif ($round_off_amt < 0) {
+			} elseif ($L_ROUND && $round_off_amt < 0) {
 				$lines[] = ['ledger_id' => $L_ROUND, 'debit' => abs(round($round_off_amt, 2))];
 			}
-			
-			
-
+						
 			$lj = new Ledger_Journal($dbh);
 
 			// Ledger Journal update: Replace-by-reference policy (Option A).
@@ -699,9 +698,10 @@ if (isset($_POST["submit"])) {
 <main>
   <div class="container container-md mt-6 p-4">
     <form id="saleForm" method='POST'>
-      <input type="hidden" id="biz_id" name="biz_id" value="<?php echo (int)$biz_id;?>">
-      <input type="hidden" id="update_id" name="update_id" value="<?php echo (int)$upd_inv_id;?>">
-      <input type="hidden" name="src_loc" value="<?php echo htmlspecialchars($src_loc, ENT_QUOTES);?>">
+		<input type="hidden" name="save_sale_update" value="1">
+		<input type="hidden" id="biz_id" name="biz_id" value="<?php echo (int)$biz_id;?>">
+		<input type="hidden" id="update_id" name="update_id" value="<?php echo (int)$upd_inv_id;?>">
+		<input type="hidden" name="src_loc" value="<?php echo htmlspecialchars($src_loc, ENT_QUOTES);?>">
 
 
       <div class="form-group row">

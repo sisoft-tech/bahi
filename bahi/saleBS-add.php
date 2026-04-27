@@ -29,11 +29,15 @@ Credit 	: Sales A/c, Output GST / TAX A/c (if applicable)
 
 $debug = 0 ;
 
+$sales_list_url = 'bill-manage.php';
+
 checksession();
 $biz_id = $_SESSION['biz_id'] ;	
 $login_user = $_SESSION['pos_login'];
 
+$txn_type = "SALES" ;
 $doc_type = "SALES" ;
+
 include 'company-info.php' ;
 include 'config-doc-entry-info.php' ;   // input ( $biz_id and $doc_type) - output ( $allow_remark_txn ;$allow_remark_item ) ;
 
@@ -45,49 +49,28 @@ $dtm = getLocalDtm();
 
 $src_loc="pos-index" ;
 
-/* Voucher Number Generation - Start */
-
-$txn_type = "SALES" ;
-$doc_series_conf = "SELECT * FROM config_doc_prefix WHERE biz_id='$biz_id' and doc_type='$txn_type'" ; 
-$stmt = $dbh->query($doc_series_conf) ;
-$rec_cnt = $stmt->rowCount() ;
-$row = $stmt->fetch() ;
-if ($rec_cnt >0 ) {
-	$doc_prefix = $row["doc_prefix"] ;
-	$len_sno = $row["sno_len"] ;
-	$sno_start = $row["sno_start"] ;
-	$sno_pad = $row["sno_pad"] ;
+function h($s) {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
-else
-{
-	$doc_prefix = "INV-" ;
-	$len_sno = 3 ;
-	$sno_start = 1 ;
-	$sno_pad = 0 ;
-}	
-if ($debug) echo "<br>:".$doc_prefix.":".$len_sno.":".$sno_start.":".$sno_pad."<br>" ;
-
-$prefix_length = strlen($doc_prefix)+1 ;  // One character after the prefix
-$qry = "SELECT SUBSTR(invoice_num,$prefix_length)+1 as srl_no from table_invoice_header 
-        where biz_id=$biz_id and invoice_num is not null and invoice_num like '$doc_prefix%' ORDER BY invoice_id DESC LIMIT 1" ;
-$stmt2 = $dbh->query($qry);
-$rec_cnt2 = $stmt2->rowCount() ;
-
-if ($rec_cnt2 != 0){
-	$row2 = $stmt2->fetch() ;
-	$doc_sno=$row2['srl_no'];
-}
-else               // No record found on this serial number.. first record.	
-{
-	$doc_sno =$sno_start ;
-}	
-$doc_num = $doc_prefix. substr(str_repeat($sno_pad, $len_sno) . $doc_sno, -$len_sno);  
 
 
-/* Voucher Number Generation - End */
+	$errors = [];
+	$saved  = false;
+	$invoice_id = 0;
+	$invoice_num = '';
+	$self_url = strtok($_SERVER['REQUEST_URI'] ?? basename($_SERVER['PHP_SELF']), '?');
+	if ($self_url === false || $self_url === '') {
+		$self_url = basename($_SERVER['PHP_SELF']);
+	}
 
-
+	$success_flash = null;
+	if (!empty($_SESSION['sale_bs_add_success']) && is_array($_SESSION['sale_bs_add_success'])) {
+		$success_flash = $_SESSION['sale_bs_add_success'];
+		unset($_SESSION['sale_bs_add_success']);
+	}
 	
+	$doc_num = nextDocNumber($dbh, $biz_id, $txn_type);
+
     $gstamount = 0;
     $hsn_code = 0;
     $std_rate = 0;
@@ -95,7 +78,8 @@ $doc_num = $doc_prefix. substr(str_repeat($sno_pad, $len_sno) . $doc_sno, -$len_
     $amount = 0;
     $gst = 0;
 
-if (isset($_POST["submit"])) {                     //**** Process Submit - Transaction Save ******/
+if (isset($_POST['save_sale']) && $_POST['save_sale'] === '1') {                     //**** Process Submit - Transaction Save ******/
+	 $voucher_num = '';
 	try {
 		$dbh->beginTransaction();
 		
@@ -119,7 +103,11 @@ if (isset($_POST["submit"])) {                     //**** Process Submit - Trans
 			$voucher_num = $_POST["voucher_num"] ;
 		}
 		else {
-			$voucher_num = $doc_num ;
+			$voucher_num = nextDocNumber($dbh, $biz_id, $txn_type); 
+		}
+		
+		if ($voucher_num === '') {
+			throw new RuntimeException('Sales voucher number is required.');
 		}
 
 		$voucher_date = $_POST["voucher_date"] ;
@@ -132,6 +120,10 @@ if (isset($_POST["submit"])) {                     //**** Process Submit - Trans
 		$party_phone = $_POST["party_phone"] ;		
 		$party_gstin = $_POST["party_gstin"] ;
 		$remark_txn = $_POST["remark_txn"] ;
+
+		if ($party_id <= 0 || $party_name === '') {
+			throw new RuntimeException('Select a party first.');
+		}
 
 		// ** Check Duplicate voucher number prior to insert ***
 		$chk = $dbh->prepare("
@@ -443,6 +435,14 @@ if (isset($_POST["submit"])) {                     //**** Process Submit - Trans
 				lines:        $lines
 			);
 			$dbh->commit();
+			$_SESSION['sale_bs_add_success'] = [
+					'invoice_num' => $voucher_num,
+					'invoice_id'  => $invoice_id
+				];
+
+			header('Location: ' . $self_url . '?saved=1');
+			exit;
+			/*
 			$alertMsg = "Sales Invoice Created!\nNo: {$voucher_num}\nAmount: " . number_format((float)$net_amt, 2);
 			$target   = "bill-manage.php";
 
@@ -451,6 +451,7 @@ if (isset($_POST["submit"])) {                     //**** Process Submit - Trans
 			  window.location.href = " . json_encode($target) . ";
 			</script>";
 			exit;
+			*/
 						
 		} 
 		catch (Throwable $e) {
@@ -716,6 +717,7 @@ $(function () {
   <div class="container">
 	<div id="flashArea"></div>  
     <form  id="saleForm" method='POST' >
+			<input type="hidden" name="save_sale" value="1">
 		 	<input type="hidden" id="biz_id" name="biz_id" value="<?php echo $biz_id;?>">	
             <input type="hidden" id ="src_loc" name ="src_loc" value ="<?php echo $src_loc;?>"/>			  		
       
@@ -1038,6 +1040,37 @@ $(function () {
 </form>
 </div>
 </main>
+<?php if ($success_flash): ?>
+<div class="modal fade" id="saleBSSuccessModal" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
+  <div class="modal-dialog modal-sm" role="document">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#5cb85c;color:#fff;">
+        <h4 class="modal-title">Sales Voucher Added</h4>
+      </div>
+
+      <div class="modal-body">
+        <p>Sales voucher has been added successfully.</p>
+        <p style="font-size:16px;">
+          Invoice Number:<br>
+          <strong><?= h($success_flash["invoice_num"] ?? "") ?></strong>
+        </p>
+      </div>
+
+      <div class="modal-footer" style="text-align:center;">
+        <a class="btn btn-primary" href="<?= h($self_url) ?>">Add Another</a>
+        <a class="btn btn-default" href="<?= h($sales_list_url) ?>">Go to List Sales Voucher</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+$(function(){
+  $("#saleBSSuccessModal").modal("show");
+});
+</script>
+<?php endif; ?>
+
 <footer>
     <!-- place footer here -->
     
@@ -1661,4 +1694,46 @@ function ledger_id_by_name(PDO $dbh, int $biz_id, string $ledger_name): int {
     if (!$id) { throw new RuntimeException("System ledger missing: {$ledger_name}"); }
     return (int)$id;
 }
+
+function nextDocNumber(PDO $dbh, int $biz_id, string $txn_type): string {
+    $doc_prefix = 'INV-';
+    $len_sno    = 3;
+    $sno_start  = 1;
+    $sno_pad    = '0';
+
+    $stc = $dbh->prepare("SELECT doc_prefix, sno_len, sno_start, sno_pad
+                            FROM config_doc_prefix
+                           WHERE biz_id = :biz AND doc_type = :dt
+                           LIMIT 1");
+    $stc->execute([':biz' => $biz_id, ':dt' => $txn_type]);
+    if ($row = $stc->fetch(PDO::FETCH_ASSOC)) {
+        $doc_prefix = (string)$row['doc_prefix'];
+        $len_sno    = (int)$row['sno_len'];
+        $sno_start  = (int)$row['sno_start'];
+        $sno_pad    = (string)$row['sno_pad'];
+    }
+
+    $prefixLen = strlen($doc_prefix) + 1;
+    $sql = "SELECT CAST(SUBSTR(invoice_num, :plen) AS UNSIGNED) AS srl_no
+              FROM table_invoice_header
+             WHERE biz_id = :biz
+               AND txn_type = :txn_type
+               AND invoice_num IS NOT NULL
+               AND invoice_num LIKE :pref
+             ORDER BY invoice_id DESC
+             LIMIT 1";
+    $st = $dbh->prepare($sql);
+    $st->execute([
+        ':plen'     => $prefixLen,
+        ':biz'      => $biz_id,
+        ':txn_type' => $txn_type,
+        ':pref'     => $doc_prefix . '%'
+    ]);
+    $srl = (int)$st->fetchColumn();
+    $srl = $srl ? ($srl + 1) : $sno_start;
+
+    return $doc_prefix . substr(str_repeat($sno_pad, $len_sno) . $srl, -$len_sno);
+}
+
+
 ?>
