@@ -390,7 +390,7 @@ if (isset($_POST['save_purchase']) && $_POST['save_purchase'] === '1') {
         $taxSGST  = round((float)$totalSGST, 2);
         $taxIGST  = round((float)$totalIGST, 2);
         $taxTotal = round((float)$totalGST, 2);
-        $grand    = round($untaxed + $taxTotal + $round_off_amt, 0);
+        $grand    = round($untaxed + $taxTotal + $round_off_amt, 2);
 
         if ($grand <= 0) {
             throw new RuntimeException('Purchase voucher amount must be greater than zero.');

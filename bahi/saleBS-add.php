@@ -382,7 +382,7 @@ if (isset($_POST["submit"])) {                     //**** Process Submit - Trans
 		
 		 // 4) Update header totals
 		 
-			$net_amt=round($outp + $total_gst_amt + $round_off_amt,0) ;  // Round to nearest Rupee, no paise -	
+			$net_amt=round($outp + $total_gst_amt + $round_off_amt,2) ;  // Round upto two digit paise -	
 			$update_invoice_header = "UPDATE table_invoice_header set total_amt=  $outp , CGST= $total_cgst, SGST=$total_sgst,
 			 igst=$total_igst, total_tax = $total_gst_amt, net_amt = $net_amt  where invoice_id = $invoice_id " ;
 			 

@@ -5,31 +5,27 @@ include 'include/dbo.php';
 include 'include/session.php';
 include 'include/param-pos.php';
 
-//include 'include/PDOConfig.php';
 $dbh = new dbo() ;
-// $biz = new MyBiz() ;
 checksession();
 $username_head = $_SESSION['login'];
 
 
 if (isset($_POST['update_id'])){  // call from biz-my-business-manage
-	$biz_id = $_POST['update_id'] ;
+	$encoded_biz_id = $_POST['update_id'] ;
+	$biz_id = base64_decode($encoded_biz_id) ;
 	$biz_name = $_POST['biz_name'] ;
 	$_SESSION['biz_id'] = $biz_id ;
 	$_SESSION['biz_name'] = $biz_name ;
 }
-else{ 
+else{ 									// From where this else will be called ??
 	$biz_id = $_SESSION['biz_id'];
 	$biz_name = $_SESSION['biz_name'];
 }
 //$biz_name = $biz->getBizName($dbh, $biz_id) ;
+	$encoded_biz_id = base64_encode($biz_id) ;
 
 $debug = 0 ;
 
-//$if_login = $username_head ;
-
-//$base_qry = "SELECT * from biz_establishment where user_added='$if_login' ORDER BY dtm_added DESC";
-//if ($debug) echo $base_qry ;
 
 ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -37,7 +33,7 @@ $debug = 0 ;
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
-	<title> Sellers Desktop - Manage Business Profile/Settings</title>
+	<title> Business Owner Desktop - Manage Business Profile/Settings</title>
 	<link rel="shortcut icon" type="image/icon" href="image/icon-main.png"/>
 	<meta name="description" content="Business Classifieds/Listing for Local Business  " />
 	<meta name="keywords" content="Business Classifieds, Free Business Listing" />
@@ -92,6 +88,15 @@ $debug = 0 ;
 			
 			
 	<li> 
+
+	<li>
+		<form action="biz-access-manage.php" method="POST">
+			<input type="hidden" name="biz_id" value="<?php echo $encoded_biz_id; ?>" />
+			<button type="submit">Manage Business Access</button>
+		</form>
+	</li>
+
+
 
 	<br> Not To be used Yet <br>
 	<form action = "biz-addresses.php" method="POST" >

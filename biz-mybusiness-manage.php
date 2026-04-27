@@ -2,11 +2,11 @@
 ob_start();
 session_start();
 
-include 'include/dbi.php';        // mysqli $conn – for legacy helpers
-include 'include/mybiz-plib.php'; // expects mysqli-based helpers today
-include 'include/dbo.php';        // PDO dbo()
-include 'include/session.php';
 include 'include/param-pos.php';
+include 'include/dbo.php';        // PDO dbo()
+
+include 'include/mybiz-plib.php'; 
+include 'include/session.php';
 
 checksession();
 $username_head = $_SESSION['login'] ?? '';
@@ -203,9 +203,9 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
               $bizId = (int)$row['biz_id'];
 			  $bizName = $row['biz_name'] ;
 			  
-              // Role from biz_estab_user_access – legacy helper still using mysqli $conn
+              // Role from biz_estab_user_access – 
 
-              $role = getBizUserRole($conn, $bizId, $if_login);
+              $role = getBizUserRole($dbh, $bizId, $if_login);
 
               // Migration rule:
               // Allow profile edit if:
@@ -250,8 +250,7 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
         <td>
           <?php
             $bcat_id   = $row['bcat_id'];
-            // legacy helper using mysqli connection
-            $bcat_name = getCategoryName($conn, $bcat_id);
+            $bcat_name = getCategoryName($dbh, $bcat_id);
             echo htmlspecialchars($bcat_name, ENT_QUOTES, 'UTF-8');
           ?>
         </td>
@@ -283,9 +282,13 @@ function getBizAppAccess(PDO $dbh, int $biz_id, string $appCode): array {
 
         <!-- Manage Profile -->
         <td>
-          <?php if ($canEditProfile): ?>
+          <?php 
+		  $biz_id = $bizId ;
+		  $encode_biz_id = base64_encode($biz_id) ;
+		  
+		  if ($canEditProfile): ?>
             <form action="biz-profile.php" method="POST">
-              <input type="hidden" name="update_id" value="<?php echo $bizId; ?>"/>
+              <input type="hidden" name="update_id" value="<?php echo $encode_biz_id; ?>"/>
               <input type="hidden" name="biz_name" value="<?php echo $bizName; ?>"/>
               <button class="blue btn-floating btn-large" type="submit">
                 <span class="material-symbols-outlined">settings</span>

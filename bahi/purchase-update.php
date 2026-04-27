@@ -192,7 +192,7 @@ if (isset($_POST['delete']) && $_POST['delete'] === '1') {
 
 // ===== Update Save Purchase Voucher =====
 $save_stage = 0;
-if (isset($_POST['submit'])) {
+if (isset($_POST['save_purchase_update']) && $_POST['save_purchase_update'] === '1') {
     try {
         $dbh->beginTransaction();
 
@@ -466,7 +466,7 @@ if (isset($_POST['submit'])) {
         $taxSGST  = round((float)$total_sgst, 2);
         $taxIGST  = round((float)$total_igst, 2);
         $taxTotal = round((float)$total_gst_amt, 2);
-        $grand    = round($untaxed + $taxTotal + $round_off_amt, 0);
+        $grand    = round($untaxed + $taxTotal + $round_off_amt, 2);
 
         if ($grand <= 0) {
             throw new RuntimeException('Purchase voucher amount must be greater than zero.');
@@ -659,9 +659,10 @@ if (isset($_POST['submit'])) {
 <main>
   <div class="container container-md mt-6 p-4">
     <form id="purchaseForm" method="POST">
-      <input type="hidden" id="biz_id" name="biz_id" value="<?php echo (int)$biz_id; ?>">
-      <input type="hidden" id="update_id" name="update_id" value="<?php echo (int)$upd_inv_id; ?>">
-      <input type="hidden" name="src_loc" value="<?php echo h($src_loc); ?>">
+		<input type="hidden" name="save_purchase_update" value="1">
+		<input type="hidden" id="biz_id" name="biz_id" value="<?php echo (int)$biz_id; ?>">
+		<input type="hidden" id="update_id" name="update_id" value="<?php echo (int)$upd_inv_id; ?>">
+		<input type="hidden" name="src_loc" value="<?php echo h($src_loc); ?>">
 
       <div class="form-group row">
         <label class="control-label col-md-2" for="voucher_num">Purchase Voucher No<span style="color:red">*</span></label>
