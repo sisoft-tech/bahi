@@ -151,6 +151,10 @@ if (isset($_POST['save_purchase']) && $_POST['save_purchase'] === '1') {
             }
         }
 
+		if ($debug) {
+			error_log("PURCHASE GST CHECK | comp_state=[" . ($comp_state ?? 'NULL') . "] vendor_state=[" . $vendor_state . "] gst_txn_type=[" . $gst_txn_type . "]");
+		}
+
         if ($voucher_num === '' || empty($_POST['manual'])) {
             $invoice_num = nextDocNumber($dbh, $biz_id, $txn_type);
         } else {
@@ -513,6 +517,80 @@ $voucher_num = nextDocNumber($dbh, $biz_id, $txn_type);
     #ItemDetailsPanel textarea { resize: vertical; }
     #ItemDetailsPanel th { white-space: nowrap; font-size: 12px; }
     #ItemDetailsPanel td { vertical-align: middle; }
+	
+	
+	html, body {
+		min-height: 100%;
+		overflow-y: auto !important;
+		overflow-x: auto !important;
+	}
+
+	main {
+		padding-bottom: 70px;
+	}
+
+	#purchaseForm {
+		padding-bottom: 75px;
+	}
+
+	.table-responsive {
+		overflow-x: auto !important;
+		overflow-y: visible;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	#ItemDetailsPanel table {
+		min-width: 1100px;
+	}
+
+	.purchase-action-bar {
+		position: sticky;
+		bottom: 0;
+		z-index: 1020;
+		background: #ccf2ff;
+		padding: 10px 15px;
+		border-top: 1px solid #999;
+		box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+	}
+
+	.purchase-action-bar .btn {
+		min-width: 120px;
+	}
+
+	.supplier-panel .form-group {
+		margin-bottom: 6px;
+	}
+
+	.supplier-panel .control-label {
+		padding-top: 4px;
+	}
+
+	.supplier-panel .form-control {
+		height: 30px;
+		padding: 4px 6px;
+	}
+
+	.supplier-panel textarea.form-control {
+		height: auto;
+	}
+
+	.supplier-block-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 30px;
+		margin-bottom: 2px;
+	}
+
+	.supplier-block-title {
+		font-weight: bold;
+		color: #337ab7;
+	}	
+	
   </style>
 
   <script>
@@ -552,6 +630,7 @@ $voucher_num = nextDocNumber($dbh, $biz_id, $txn_type);
       var obj = JSON.parse(resp || '{}');
       $('#vendor_id').val(obj.account_id || '');
       $('#vendor_name').val(obj.account_name || '');
+	  $('#vendor_name_dup').val(obj.account_name || '');	  
       $('#vendor_address').val(obj.address || '');
       $('#vendor_phone').val(obj.phone_num || '');
       $('#vendor_state').val(obj.state || '');
@@ -579,6 +658,15 @@ $voucher_num = nextDocNumber($dbh, $biz_id, $txn_type);
   function set_voucher_numbering_mode(){
     document.getElementById('manual').checked = true;
   }
+  
+  function toggleSupplier(cb_supplier_det) {
+    var x = document.getElementById("SupplierDetails");
+    if (cb_supplier_det.checked) {
+        x.style.display = "block";
+    } else {
+        x.style.display = "none";
+    }
+}
   </script>
 </head>
 <body>
@@ -591,56 +679,187 @@ $voucher_num = nextDocNumber($dbh, $biz_id, $txn_type);
 	 <input type="hidden" name="save_purchase" value="1">
     <input type="hidden" id="biz_id" name="biz_id" value="<?= (int)$biz_id ?>">
 
-    <div class="form-group row">
-      <label class="control-label col-md-2">Purchase Voucher No<span style="color:red">*</span></label>
-      <div class="col-md-3">
-        <input name="voucher_num" id="voucher_num" class="input-md" type="text" value="<?= h($voucher_num) ?>" onchange="set_voucher_numbering_mode()">
-        <br><label><input type="checkbox" name="manual" id="manual"> Manual Numbering</label>
-      </div>
+ <div class="form-group row" style="margin-bottom:2px;">
+    <label class="control-label col-md-2" for="voucher_num">
+        Purchase Voucher No<span style="color:red">*</span>
+    </label>
 
-      <label class="control-label col-md-2">Entry Date<span style="color:red">*</span></label>
-      <div class="col-md-3">
-        <input name="voucher_date" id="voucher_date" required class="input-md" type="date" value="<?= h(date('Y-m-d')) ?>">
-      </div>
+    <div class="col-md-2">
+        <input name="voucher_num"
+               id="voucher_num"
+               class="input-md"
+               type="text"
+               value="<?= h($voucher_num) ?>"
+               onchange="set_voucher_numbering_mode()">
     </div>
 
-    <div class="form-group row">
-      <label class="control-label col-md-2"><b>Supplier Details:</b></label>
-      <div class="col-md-2">
-        <button type="button" class="btn btn-info" data-toggle="modal" data-target="#PartyModal">Select Supplier</button>
-      </div>
+    <div class="col-md-2" style="margin-top:2px; font-size:10px; display:flex; align-items:center;">
+        <label style="font-weight:bold; margin:0; display:flex; align-items:center;">
+            <input type="checkbox" name="manual" id="manual" style="margin:0 4px 0 0;">
+            Manual Numbering
+        </label>
     </div>
 
-    <div class="row" style="margin-bottom:2px;">
-      <label class="control-label col-md-2">Vendor ID & Name</label>
-      <div class="col-md-1"><input readonly name="vendor_id" id="vendor_id" class="input-md" type="text"></div>
-      <div class="col-md-2"><input readonly name="vendor_name" id="vendor_name" class="input-md" type="text"></div>
-      <label class="control-label col-md-2">Phone</label>
-      <div class="col-md-3"><input readonly name="vendor_phone" id="vendor_phone" class="input-md" type="text"></div>
+    <label class="control-label col-md-2" for="voucher_date">
+        Transaction Date<span style="color:red">*</span>
+    </label>
+
+    <div class="col-md-3">
+        <input name="voucher_date"
+               id="voucher_date"
+               required
+               class="input-md"
+               type="date"
+               value="<?= h(date('Y-m-d')) ?>">
+    </div>
+</div>
+
+<div class="row" style="margin-bottom:2px;margin-top:2px;">
+    <label class="control-label col-md-2" for="sup_invoice_num">
+        Supplier Invoice No
+    </label>
+
+    <div class="col-md-2">
+        <input name="sup_invoice_num"
+               id="sup_invoice_num"
+               class="input-md"
+               type="text">
     </div>
 
-    <div class="row" style="margin-bottom:2px;">
-      <label class="control-label col-md-2">Address</label>
-      <div class="col-md-3"><input readonly name="vendor_address" id="vendor_address" class="input-md" type="text"></div>
-      <label class="control-label col-md-2">PinCode</label>
-      <div class="col-md-2"><input readonly name="vendor_pincode" id="vendor_pincode" class="input-md" type="text"></div>
+    <div class="col-md-2"></div>
+
+    <label class="control-label col-md-2" for="sup_invoice_date">
+        Supplier Invoice Date
+    </label>
+
+    <div class="col-md-3">
+        <input name="sup_invoice_date"
+               id="sup_invoice_date"
+               class="input-md"
+               type="date"
+               disabled>
+    </div>
+</div>
+
+<!-- ================= SUPPLIER DETAILS BLOCK ================= -->
+
+<div class="panel panel-default" id="SupplierPanel" style="margin-top:10px;">
+
+    <div class="panel-heading"
+         style="display:flex; align-items:center; gap:10px;">
+
+        <strong style="min-width:140px;">Supplier Details</strong>
+
+        <button type="button"
+                class="btn btn-info btn-xs"
+                data-toggle="modal"
+                data-target="#PartyModal">
+            Select Supplier
+        </button>
+
+        <span style="margin-left:10px;">
+            <b>ID:</b>
+            <input readonly
+                   id="vendor_id"
+                   name="vendor_id"
+                   style="width:50px; height:22px;">
+        </span>
+
+        <span>
+            <b>Name:</b>
+            <input readonly
+                   id="vendor_name"
+                   name="vendor_name"
+                   style="width:220px; height:22px;">
+        </span>
+
+        <span style="margin-left:auto;">
+            <label style="font-weight:normal; margin:0;">
+                <input type="checkbox"
+                       id="cb_supplier_det"
+                       checked
+                       onchange="toggleSupplier(this)">
+                Show/Hide Supplier Details
+            </label>
+        </span>
+
     </div>
 
-    <div class="row" style="margin-bottom:2px;">
-      <label class="control-label col-md-2">State</label>
-      <div class="col-md-2"><input readonly name="vendor_state" id="vendor_state" class="input-md" type="text"></div>
-      <div class="col-md-1"></div>
-      <label class="control-label col-md-2">GSTIN</label>
-      <div class="col-md-3"><input readonly name="vendor_gstin" id="vendor_gstin" class="input-md" type="text"></div>
-    </div>
+    <div class="panel-body supplier-panel" id="SupplierDetails" style="padding:10px;">
 
-    <div class="row" style="margin-bottom:2px; margin-top:10px;">
-      <label class="control-label col-md-2">Supplier Invoice Number</label>
-      <div class="col-md-2"><input name="sup_invoice_num" id="sup_invoice_num" class="input-md" type="text"></div>
-      <div class="col-md-1"></div>
-      <label class="control-label col-md-2">Supplier Invoice Date</label>
-      <div class="col-md-3"><input name="sup_invoice_date" id="sup_invoice_date" class="input-md" type="date" value="" disabled></div>
+        <div class="row">
+
+            <div class="col-md-12">
+                <div style="border:1px solid #ddd; padding:12px; border-radius:4px; background:#fafafa;">
+
+                    <div class="supplier-block-header">
+                        <span class="supplier-block-title">Supplier / Vendor</span>
+                    </div>
+
+                    <div class="row form-group">
+                        <label class="col-md-2 control-label">Name</label>
+                        <div class="col-md-10">
+                            <input readonly
+                                   name="vendor_name_dup"
+                                   id="vendor_name_dup"
+                                   class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <label class="col-md-2 control-label">Address</label>
+                        <div class="col-md-10">
+                            <textarea readonly
+                                      name="vendor_address"
+                                      id="vendor_address"
+                                      class="form-control"
+                                      rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <label class="col-md-2 control-label">State</label>
+                        <div class="col-md-5">
+                            <input readonly
+                                   name="vendor_state"
+                                   id="vendor_state"
+                                   class="form-control">
+                        </div>
+
+                        <label class="col-md-1 control-label">PIN</label>
+                        <div class="col-md-4">
+                            <input readonly
+                                   name="vendor_pincode"
+                                   id="vendor_pincode"
+                                   class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <label class="col-md-2 control-label">GSTIN</label>
+                        <div class="col-md-5">
+                            <input readonly
+                                   name="vendor_gstin"
+                                   id="vendor_gstin"
+                                   class="form-control">
+                        </div>
+
+                        <label class="col-md-1 control-label">Phone</label>
+                        <div class="col-md-4">
+                            <input readonly
+                                   name="vendor_phone"
+                                   id="vendor_phone"
+                                   class="form-control">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
     </div>
+</div>
 
     <div class="row" style="margin-bottom:2px;margin-top:10px;<?= ($allow_remark_txn === 'N') ? 'display:none;' : '' ?>">
       <label class="control-label col-md-2" for="remark_txn">Remark</label>
@@ -698,9 +917,13 @@ $voucher_num = nextDocNumber($dbh, $biz_id, $txn_type);
       </div>
     </div>
 
-    <div style="margin-top:10px;">
-      <button name="submit" class="btn btn-success" type="submit" value="submit">SUBMIT</button>
-    </div>
+	<div class="purchase-action-bar">
+	  <button id="btnSubmitPurchase" class="btn btn-success" type="submit">
+		Save Voucher
+	  </button>
+	</div>
+
+
   </form>
 </main>
 
@@ -1186,7 +1409,7 @@ $(function(){
     }
 
     $form.data('saving', true);
-    $('#purchaseForm button[type="submit"]').prop('disabled', true).text('Saving...');
+    $('#btnSubmitPurchase').prop('disabled', true).text('Saving...');
 
     return true;
   });

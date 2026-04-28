@@ -111,8 +111,6 @@ if (isset($_POST['save_sale']) && $_POST['save_sale'] === '1') {                
 		}
 
 		$voucher_date = $_POST["voucher_date"] ;
-		$ord_ref_num = $_POST["ord_ref_num"] ; 
-		$ord_ref_date = trim((string)($_POST['ord_ref_date'] ?? ''));
 		$party_id = $_POST["party_id"] ;
 		$party_name = $_POST["party_name"] ;
 		$party_address = $_POST["party_address"] ;
@@ -120,6 +118,16 @@ if (isset($_POST['save_sale']) && $_POST['save_sale'] === '1') {                
 		$party_phone = $_POST["party_phone"] ;		
 		$party_gstin = $_POST["party_gstin"] ;
 		$remark_txn = $_POST["remark_txn"] ;
+
+
+		$ord_ref_num = trim((string)($_POST['ord_ref_num'] ?? ''));
+		$ord_ref_date = trim((string)($_POST['ord_ref_date'] ?? ''));
+
+		if ($ord_ref_num === '') {
+			$ord_ref_date = null;
+		} elseif ($ord_ref_date === '') {
+			throw new RuntimeException('Order date is required when order reference number is entered.');
+		}
 
 		if ($party_id <= 0 || $party_name === '') {
 			throw new RuntimeException('Select a party first.');
@@ -482,42 +490,104 @@ if (isset($_POST['save_sale']) && $_POST['save_sale'] === '1') {                
 
 
 <style>
-	.fld8 { width: 8ch; max-width: 8ch; }
-    .fld12 { width: 12ch; max-width: 12ch; }
+	html, body {
+		min-height: 100%;
+		overflow-y: auto !important;
+		overflow-x: auto !important;
+	}
 
-	.totbox { font-weight: bold; }
-	.totrow td { background:#f5f5f5; }
-	
-	td.disc-mode { min-width: 90px; }
-	td.disc-val  { min-width: 90px; }
-	td.disc-mode select { height: 30px; padding: 4px 6px; }
+	main {
+		padding-bottom: 90px;
+	}
+
+	#saleForm {
+		padding-bottom: 80px;
+	}
+
+	.table-responsive {
+		overflow-x: auto !important;
+		overflow-y: visible;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	#ItemDetailsPanel table {
+		min-width: 1100px;
+	}
+
+	.sale-action-bar {
+		position: sticky;
+		bottom: 0;
+		z-index: 9000;
+		background: #ccf2ff;
+		padding: 10px 15px;
+		border-top: 1px solid #999;
+		box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+	}
+
+	.sale-action-bar .btn {
+		min-width: 120px;
+	}
+
+	.fld8 {
+		width: 8ch;
+		max-width: 8ch;
+	}
+
+	.fld12 {
+		width: 12ch;
+		max-width: 12ch;
+	}
+
+	.totbox {
+		font-weight: bold;
+	}
+
+	.totrow td {
+		background: #f5f5f5;
+	}
+
+	td.disc-mode {
+		min-width: 90px;
+	}
+
+	td.disc-val {
+		min-width: 90px;
+	}
+
+	td.disc-mode select {
+		height: 30px;
+		padding: 4px 6px;
+	}
 
 	.customer-panel .form-group {
-	  margin-bottom: 6px;
+		margin-bottom: 6px;
 	}
 
 	.customer-panel .control-label {
-	  padding-top: 4px;
+		padding-top: 4px;
 	}
 
 	.customer-panel .form-control {
-	  height: 30px;
-	  padding: 4px 6px;
+		height: 30px;
+		padding: 4px 6px;
 	}
-	
+
 	.bill-ship-header {
-	  display: flex;
-	  align-items: center;
-	  justify-content: space-between;
-	  min-height: 30px;
-	  margin-bottom: 2px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 30px;
+		margin-bottom: 2px;
 	}
 
 	.bill-ship-title {
-	  font-weight: bold;
-	  color: #337ab7;
-	}	
-	
+		font-weight: bold;
+		color: #337ab7;
+	}
 </style>
   
   <script type="text/javascript" >
@@ -1034,8 +1104,8 @@ $(function () {
 
 </div>
 
-<div style="margin-top:10px;">
-  <button name="submit" class="btn btn-primary" type="submit" value="submit">SUBMIT</button>
+<div class="sale-action-bar">
+  <button id="btnSubmitSale" class="btn btn-primary" type="submit"> Save Voucher </button>
 </div>
 </form>
 </div>
@@ -1535,7 +1605,7 @@ $(function () {
 
     // User confirmed, now allow submit
     $form.data('saving', true);
-    $('#saleForm button[type="submit"]').prop('disabled', true).text('Saving...');
+    $('#btnSubmitSale').prop('disabled', true).text('Saving...');
 
     return true;
   });
